@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_app.dir/main.cpp.o CMakeFiles/test_app.dir/utils.cpp.o CMakeFiles/test_app.dir/config.cpp.o CMakeFiles/test_app.dir/logger.cpp.o CMakeFiles/test_app.dir/handler/base_handler.cpp.o CMakeFiles/test_app.dir/handler/http_handler.cpp.o CMakeFiles/test_app.dir/common/types.cpp.o -o test_app  -lpthread 

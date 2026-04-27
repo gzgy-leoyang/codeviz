@@ -1,0 +1,152 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>codeviz - 源码可视化分析报告</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #eee; }
+        #header { background: #16213e; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #0f3460; }
+        #header h1 { font-size: 20px; color: #e94560; }
+        #tabs { background: #16213e; padding: 0 24px; display: flex; border-bottom: 1px solid #0f3460; }
+        .tab { padding: 12px 20px; cursor: pointer; color: #aaa; border-bottom: 2px solid transparent; font-size: 14px; }
+        .tab.active { color: #e94560; border-bottom-color: #e94560; }
+        #main { display: flex; height: calc(100vh - 102px); }
+        #sidebar { width: 280px; background: #16213e; border-right: 1px solid #0f3460; overflow-y: auto; padding: 12px; flex-shrink: 0; }
+        #sidebar h3 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+        #search { width: 100%; background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; }
+        #symbol-list { list-style: none; }
+        #symbol-list li { padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #ccc; }
+        #symbol-list li:hover { background: #0f3460; color: #e94560; }
+        #canvas-container { flex: 1; position: relative; }
+        #cy { width: 100%; height: 100%; }
+        #stats-panel { display: none; padding: 20px; overflow-y: auto; flex: 1; }
+        .stat-card { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .stat-card h3 { font-size: 14px; color: #e94560; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 8px; background: #0f3460; color: #aaa; }
+        td { padding: 8px; border-bottom: 1px solid #0f3460; }
+        .hotbar { height: 8px; border-radius: 4px; display: inline-block; min-width: 4px; }
+        .anomaly { background: #e94560; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin: 4px 0; }
+        #node-info { position: absolute; bottom: 16px; right: 16px; background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 12px; max-width: 300px; display: none; font-size: 13px; z-index: 10; }
+        #node-info h4 { color: #e94560; margin-bottom: 8px; }
+        #node-info .kv { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        #node-info .kv .k { color: #aaa; }
+        #controls { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 10; }
+        .btn { background: #0f3460; color: #eee; border: 1px solid #e94560; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .btn:hover { background: #e94560; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>codeviz &nbsp;<span style="color:#aaa;font-size:14px;">源码可视化分析报告</span></h1>
+        <div class="meta" id="meta-info">加载中...</div>
+    </div>
+    <div id="tabs">
+        <div class="tab active" onclick="switchTab('call')">调用图</div>
+        <div class="tab" onclick="switchTab('include')">包含图</div>
+        <div class="tab" onclick="switchTab('type')">类型图</div>
+        <div class="tab" onclick="switchTab('stats')">统计分析</div>
+    </div>
+    <div id="main">
+        <div id="sidebar">
+            <h3>符号搜索</h3>
+            <input id="search" type="text" placeholder="搜索函数/类/文件..." oninput="filterSymbols(this.value)">
+            <ul id="symbol-list"></ul>
+        </div>
+        <div id="canvas-container">
+            <div id="controls">
+                <button class="btn" onclick="resetLayout()">重置布局</button>
+                <button class="btn" onclick="fitGraph()">适应窗口</button>
+            </div>
+            <div id="cy"></div>
+            <div id="node-info">
+                <h4 id="ni-name">-</h4>
+                <div class="kv"><span class="k">类型</span><span id="ni-kind">-</span></div>
+                <div class="kv"><span class="k">文件</span><span id="ni-file">-</span></div>
+                <div class="kv"><span class="k">行号</span><span id="ni-line">-</span></div>
+                <div class="kv"><span class="k">扇入</span><span id="ni-fanin">-</span></div>
+                <div class="kv"><span class="k">扇出</span><span id="ni-fanout">-</span></div>
+                <div class="kv"><span class="k">圈复杂度</span><span id="ni-cc">-</span></div>
+            </div>
+        </div>
+        <div id="stats-panel"></div>
+    </div>
+    <script>
+    // Cytoscape.js 内嵌（由 Reporter 填充真实库内容）
+    /* Cytoscape.js: 请手动内嵌 cytoscape.min.js，或通过网络加载：
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"><\/script> */
+    </script>
+    <script>
+    const CODEVIZ_DATA = {"anomalies":{"circular_includes":[]},"call_graph":{"edges":[],"nodes":[]},"hotspots":{"files":[{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/config.cpp","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/utils.h","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/main.cpp","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/config.h","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/logger.cpp","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/utils.cpp","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/common/types.cpp","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/common/types.h","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.h","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.cpp","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.cpp","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.h","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/logger.h","heat":0.0},{"code_lines":0,"file_path":"/home/dd/Works/ReadSrc/test_project/build/CMakeFiles/3.28.3/CompilerIdCXX/CMakeCXXCompilerId.cpp","heat":0.0}],"functions":[]},"include_graph":{"edges":[],"nodes":[]},"metadata":{"c_compiler":"","cxx_compiler":"","file_count":14,"function_count":0,"generated_at":"2026-04-24 14:48:41","project_name":"/home/dd/Works/ReadSrc/test_project"},"stats":{"file_stats":[{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/config.cpp","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/utils.h","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/main.cpp","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/config.h","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/logger.cpp","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/utils.cpp","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/common/types.cpp","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/common/types.h","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.h","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.cpp","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.cpp","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.h","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/logger.h","total_lines":0},{"code_lines":0,"complexity_sum":0.0,"file_path":"/home/dd/Works/ReadSrc/test_project/build/CMakeFiles/3.28.3/CompilerIdCXX/CMakeCXXCompilerId.cpp","total_lines":0}],"function_stats":[]},"symbols":[{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/config.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/config.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/config.cpp","symbol_id":1},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/utils.h","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/utils.h","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/utils.h","symbol_id":2},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/main.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/main.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/main.cpp","symbol_id":3},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/config.h","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/config.h","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/config.h","symbol_id":4},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/logger.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/logger.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/logger.cpp","symbol_id":5},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/utils.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/utils.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/utils.cpp","symbol_id":6},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/common/types.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/common/types.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/common/types.cpp","symbol_id":7},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/common/types.h","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/common/types.h","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/common/types.h","symbol_id":8},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.h","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.h","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/handler/base_handler.h","symbol_id":9},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/handler/base_handler.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/handler/base_handler.cpp","symbol_id":10},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/handler/http_handler.cpp","symbol_id":11},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.h","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/handler/http_handler.h","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/handler/http_handler.h","symbol_id":12},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/logger.h","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/logger.h","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/logger.h","symbol_id":13},{"complexity":0,"fan_in":0,"fan_out":0,"file_path":"/home/dd/Works/ReadSrc/test_project/build/CMakeFiles/3.28.3/CompilerIdCXX/CMakeCXXCompilerId.cpp","kind":"FILE_ENTITY","line":0,"name":"/home/dd/Works/ReadSrc/test_project/build/CMakeFiles/3.28.3/CompilerIdCXX/CMakeCXXCompilerId.cpp","qualified_name":"FILE::/home/dd/Works/ReadSrc/test_project/build/CMakeFiles/3.28.3/CompilerIdCXX/CMakeCXXCompilerId.cpp","symbol_id":14}],"type_graph":{"edges":[],"nodes":[]}};
+    </script>
+    <script>
+    
+(function(){
+'use strict';
+var data=window.CODEVIZ_DATA;
+var cy=null;
+var WEBGL_THRESHOLD=1000;
+function heatColor(v){var r=Math.round(v*220+35),g=Math.round((1-v)*150+30),b=Math.round((1-v)*180+30);return'rgb('+r+','+g+','+b+')';}
+function nodeShape(k){switch(k){case'FUNCTION':return'ellipse';case'STRUCT':case'CLASS':return'rectangle';case'FILE_ENTITY':return'diamond';default:return'ellipse';}}
+function buildElements(graphData,symbols,stats){
+var elements=[];var symbolMap={};symbols.forEach(function(s){symbolMap[s.symbol_id]=s;});
+var statsMap={};if(stats&&stats.function_stats){stats.function_stats.forEach(function(f){statsMap[f.function_id]=f;});}
+var nodeSet=new Set();var maxFanIn=1;
+if(stats&&stats.function_stats){stats.function_stats.forEach(function(f){if(f.fan_in>maxFanIn)maxFanIn=f.fan_in;});}
+(graphData.nodes||[]).forEach(function(n){
+if(nodeSet.has(n.id))return;nodeSet.add(n.id);
+var sym=symbolMap[n.id]||{};var fstat=statsMap[n.id]||{};
+var heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
+elements.push({group:'nodes',data:{id:String(n.id),label:n.label||sym.name||String(n.id),kind:sym.kind||n.type||'FUNCTION',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal}});
+});
+(graphData.edges||[]).forEach(function(e,idx){elements.push({group:'edges',data:{id:'e'+idx,source:String(e.source_id),target:String(e.target_id),relation:e.relation||'CALLS',weight:e.weight||1}});});
+return elements;}
+function initCytoscape(elements){
+var container=document.getElementById('cy');if(!container)return;
+if(typeof cytoscape==='undefined'){container.innerHTML='<div style="padding:40px;color:#e94560;text-align:center;"><h3>Cytoscape.js 未加载</h3><p style="margin-top:8px;color:#aaa;font-size:13px;">本报告需要网络连接以加载 Cytoscape.js，或替换为离线版本</p></div>';return;}
+try{cy=cytoscape({container:container,elements:elements,
+style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':'11px','text-valign':'center','text-halign':'center',width:'60px',height:'30px','border-width':1,'border-color':'#e94560','background-color':'#16213e'}},
+{selector:'edge',style:{width:1.5,'line-color':'#0f3460','target-arrow-color':'#e94560','target-arrow-shape':'triangle','curve-style':'bezier'}},
+{selector:'node:selected',style:{'border-width':3,'border-color':'#e94560'}}],
+layout:{name:elements.filter(function(e){return e.group==='nodes';}).length>100?'cose':'cose',padding:20}});
+cy.on('tap','node',function(evt){var d=evt.target.data();document.getElementById('node-info').style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;});
+cy.on('tap',function(evt){if(evt.target===cy)document.getElementById('node-info').style.display='none';});
+}catch(e){console.error('Cytoscape init failed:',e);}}
+window.switchTab=function(tab){
+document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});event.target.classList.add('active');
+var sp=document.getElementById('stats-panel');var cc=document.getElementById('canvas-container');var sb=document.getElementById('sidebar');
+if(tab==='stats'){sp.style.display='block';cc.style.display='none';sb.style.display='none';renderStats();return;}
+sp.style.display='none';cc.style.display='block';sb.style.display='block';
+var graphData=tab==='call'?data.call_graph:tab==='include'?data.include_graph:data.type_graph;
+if(cy){cy.destroy();cy=null;}
+initCytoscape(buildElements(graphData||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));};
+window.resetLayout=function(){if(cy)cy.layout({name:'cose',padding:20}).run();};
+window.fitGraph=function(){if(cy)cy.fit();};
+window.filterSymbols=function(q){document.getElementById('symbol-list').querySelectorAll('li').forEach(function(li){li.style.display=li.textContent.toLowerCase().includes(q.toLowerCase())?'':'none';});};
+function renderSidebar(){var list=document.getElementById('symbol-list');list.innerHTML='';(data.symbols||[]).forEach(function(s){var li=document.createElement('li');li.textContent=s.name;li.title=s.qualified_name;li.onclick=function(){if(cy){var node=cy.getElementById(String(s.symbol_id));if(node.length){cy.animate({fit:{eles:node,padding:60},duration:400});node.select();}}};list.appendChild(li);});}
+function renderStats(){
+var stats=data.stats||{};var meta=data.metadata||{};
+var sp=document.getElementById('stats-panel');
+sp.innerHTML='<div class="stat-card"><h3>项目概览</h3><table id="sum-tbl"></table></div><div class="stat-card"><h3>文件热力图</h3><table id="file-tbl"><tr><th>文件</th><th>行数</th><th>热力</th></tr></table></div><div class="stat-card"><h3>函数热力图</h3><table id="func-tbl"><tr><th>函数</th><th>扇入</th><th>扇出</th><th>圈复杂度</th></tr></table></div><div class="stat-card"><h3>异常检测</h3><div id="ano-list"></div></div>';
+var st=document.getElementById('sum-tbl');
+st.innerHTML='<tr><th>项目</th><td>'+( meta.project_name||'-')+'</td></tr><tr><th>文件数</th><td>'+(meta.file_count||0)+'</td></tr><tr><th>函数数</th><td>'+(meta.function_count||0)+'</td></tr><tr><th>C编译器</th><td>'+(meta.c_compiler||'-')+'</td></tr><tr><th>C++编译器</th><td>'+(meta.cxx_compiler||'-')+'</td></tr>';
+var ml=Math.max.apply(null,(stats.file_stats||[]).map(function(f){return f.code_lines||0;}).concat([1]));
+var ft=document.getElementById('file-tbl');
+(stats.file_stats||[]).sort(function(a,b){return b.code_lines-a.code_lines;}).slice(0,20).forEach(function(f){var h=(f.code_lines||0)/ml;var tr=document.createElement('tr');tr.innerHTML='<td>'+f.file_path.split('/').pop()+'</td><td>'+f.code_lines+'</td><td><span class="hotbar" style="width:'+Math.max(h*120,4)+'px;background:'+heatColor(h)+'"></span></td>';ft.appendChild(tr);});
+var symMap={};(data.symbols||[]).forEach(function(s){symMap[s.symbol_id]=s;});
+var fnT=document.getElementById('func-tbl');
+(stats.function_stats||[]).slice(0,20).forEach(function(f){var sym=symMap[f.function_id]||{};var tr=document.createElement('tr');tr.innerHTML='<td>'+(sym.name||f.function_id)+'</td><td>'+f.fan_in+'</td><td>'+f.fan_out+'</td><td>'+f.cyclomatic_complexity+'</td>';fnT.appendChild(tr);});
+var anoList=document.getElementById('ano-list');var ano=data.anomalies||{};
+if(!(ano.circular_includes||[]).length){anoList.innerHTML='<p style="color:#4ade80;font-size:13px;">未检测到循环包含</p>';}
+else{(ano.circular_includes||[]).forEach(function(ci){var d=document.createElement('div');d.className='anomaly';d.textContent='循环包含: '+ci.file_cycle.join(' → ');anoList.appendChild(d);});}
+}
+function updateMeta(){var meta=data.metadata||{};document.getElementById('meta-info').textContent='项目: '+(meta.project_name||'-')+' | 生成时间: '+(meta.generated_at||'-');}
+document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSidebar();initCytoscape(buildElements(data.call_graph||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));});
+})();
+
+    </script>
+</body>
+</html>

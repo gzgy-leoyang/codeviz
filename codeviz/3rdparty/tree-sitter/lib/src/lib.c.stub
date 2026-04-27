@@ -1,0 +1,76 @@
+// tree-sitter 核心桩实现 - 网络恢复后替换为真实库源码
+#include "tree_sitter/parser.h"
+#include <string.h>
+#include <stdio.h>
+
+struct TSParser {
+    const TSLanguage *language;
+};
+
+struct TSTree {
+    int dummy;
+};
+
+static const char *EMPTY = "";
+
+static TSNode make_null_node(void) {
+    TSNode node;
+    node.context[0] = 0;
+    node.context[1] = 0;
+    node.context[2] = 0;
+    node.context[3] = 0;
+    node.tree = NULL;
+    return node;
+}
+
+static TSPoint make_zero_point(void) {
+    TSPoint p;
+    p.row = 0;
+    p.column = 0;
+    return p;
+}
+
+TSParser *ts_parser_new(void) {
+    TSParser *p = (TSParser *)calloc(1, sizeof(TSParser));
+    return p;
+}
+
+void ts_parser_delete(TSParser *parser) {
+    free(parser);
+}
+
+void ts_parser_set_language(TSParser *parser, const TSLanguage *language) {
+    if (parser) parser->language = language;
+}
+
+TSTree *ts_parser_parse_string(TSParser *parser, const TSTree *old_tree,
+                               const char *string, uint32_t length) {
+    TSTree *tree = (TSTree *)calloc(1, sizeof(TSTree));
+    return tree;
+}
+
+void ts_tree_delete(TSTree *tree) {
+    free(tree);
+}
+
+TSNode ts_tree_root_node(const TSTree *tree) {
+    return make_null_node();
+}
+
+uint32_t ts_node_start_byte(TSNode node) { return node.context[0]; }
+uint32_t ts_node_end_byte(TSNode node) { return node.context[1]; }
+TSPoint ts_node_start_point(TSNode node) { return make_zero_point(); }
+TSPoint ts_node_end_point(TSNode node) { return make_zero_point(); }
+char *ts_node_string(TSNode node) { return strdup(""); }
+TSSymbol ts_node_symbol(TSNode node) { return 0; }
+const char *ts_node_type(TSNode node) { return EMPTY; }
+TSNode ts_node_child(TSNode node, uint32_t i) { return make_null_node(); }
+uint32_t ts_node_child_count(TSNode node) { return 0; }
+TSNode ts_node_child_by_field_name(TSNode n, const char *name, uint32_t len) { return make_null_node(); }
+TSNode ts_node_named_child(TSNode node, uint32_t i) { return make_null_node(); }
+uint32_t ts_node_named_child_count(TSNode node) { return 0; }
+TSNode ts_node_parent(TSNode node) { return make_null_node(); }
+TSNode ts_node_next_sibling(TSNode node) { return make_null_node(); }
+TSNode ts_node_prev_sibling(TSNode node) { return make_null_node(); }
+bool ts_node_is_null(TSNode node) { return node.tree == NULL; }
+bool ts_node_is_error(TSNode node) { return false; }

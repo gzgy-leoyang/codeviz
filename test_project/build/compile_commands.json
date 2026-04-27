@@ -1,0 +1,44 @@
+[
+{
+  "directory": "/home/dd/Works/ReadSrc/test_project/build",
+  "command": "/usr/bin/c++ -DDEBUG_MODE -I/home/dd/Works/ReadSrc/test_project -std=gnu++17 -o CMakeFiles/test_app.dir/main.cpp.o -c /home/dd/Works/ReadSrc/test_project/main.cpp",
+  "file": "/home/dd/Works/ReadSrc/test_project/main.cpp",
+  "output": "CMakeFiles/test_app.dir/main.cpp.o"
+},
+{
+  "directory": "/home/dd/Works/ReadSrc/test_project/build",
+  "command": "/usr/bin/c++ -DDEBUG_MODE -I/home/dd/Works/ReadSrc/test_project -std=gnu++17 -o CMakeFiles/test_app.dir/utils.cpp.o -c /home/dd/Works/ReadSrc/test_project/utils.cpp",
+  "file": "/home/dd/Works/ReadSrc/test_project/utils.cpp",
+  "output": "CMakeFiles/test_app.dir/utils.cpp.o"
+},
+{
+  "directory": "/home/dd/Works/ReadSrc/test_project/build",
+  "command": "/usr/bin/c++ -DDEBUG_MODE -I/home/dd/Works/ReadSrc/test_project -std=gnu++17 -o CMakeFiles/test_app.dir/config.cpp.o -c /home/dd/Works/ReadSrc/test_project/config.cpp",
+  "file": "/home/dd/Works/ReadSrc/test_project/config.cpp",
+  "output": "CMakeFiles/test_app.dir/config.cpp.o"
+},
+{
+  "directory": "/home/dd/Works/ReadSrc/test_project/build",
+  "command": "/usr/bin/c++ -DDEBUG_MODE -I/home/dd/Works/ReadSrc/test_project -std=gnu++17 -o CMakeFiles/test_app.dir/logger.cpp.o -c /home/dd/Works/ReadSrc/test_project/logger.cpp",
+  "file": "/home/dd/Works/ReadSrc/test_project/logger.cpp",
+  "output": "CMakeFiles/test_app.dir/logger.cpp.o"
+},
+{
+  "directory": "/home/dd/Works/ReadSrc/test_project/build",
+  "command": "/usr/bin/c++ -DDEBUG_MODE -I/home/dd/Works/ReadSrc/test_project -std=gnu++17 -o CMakeFiles/test_app.dir/handler/base_handler.cpp.o -c /home/dd/Works/ReadSrc/test_project/handler/base_handler.cpp",
+  "file": "/home/dd/Works/ReadSrc/test_project/handler/base_handler.cpp",
+  "output": "CMakeFiles/test_app.dir/handler/base_handler.cpp.o"
+},
+{
+  "directory": "/home/dd/Works/ReadSrc/test_project/build",
+  "command": "/usr/bin/c++ -DDEBUG_MODE -I/home/dd/Works/ReadSrc/test_project -std=gnu++17 -o CMakeFiles/test_app.dir/handler/http_handler.cpp.o -c /home/dd/Works/ReadSrc/test_project/handler/http_handler.cpp",
+  "file": "/home/dd/Works/ReadSrc/test_project/handler/http_handler.cpp",
+  "output": "CMakeFiles/test_app.dir/handler/http_handler.cpp.o"
+},
+{
+  "directory": "/home/dd/Works/ReadSrc/test_project/build",
+  "command": "/usr/bin/c++ -DDEBUG_MODE -I/home/dd/Works/ReadSrc/test_project -std=gnu++17 -o CMakeFiles/test_app.dir/common/types.cpp.o -c /home/dd/Works/ReadSrc/test_project/common/types.cpp",
+  "file": "/home/dd/Works/ReadSrc/test_project/common/types.cpp",
+  "output": "CMakeFiles/test_app.dir/common/types.cpp.o"
+}
+]
