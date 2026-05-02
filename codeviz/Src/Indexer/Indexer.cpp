@@ -174,6 +174,7 @@ FunctionSymbol Indexer::extract_function_detail(const RawSymbol& raw, uint32_t s
     fsym.is_virtual = raw.is_virtual;
     fsym.is_static = raw.is_static;
     fsym.is_inline = raw.is_inline;
+    fsym.branch_count = raw.branch_count;
     // cyclomatic_complexity / fan_in / fan_out 由 Analyzer 填充
     return fsym;
 }

@@ -200,6 +200,15 @@ void ParserFrontend::traverse_cst(TSNode node, FileParseResult& result,
     } else if (strcmp(type, "call_expression") == 0) {
         visit_call_expression(node, result, source, current_func);
         // 继续遍历子节点（参数中可能有嵌套调用）
+    } else if (current_func && (
+        strcmp(type, "if_statement") == 0 ||
+        strcmp(type, "for_statement") == 0 ||
+        strcmp(type, "while_statement") == 0 ||
+        strcmp(type, "do_statement") == 0 ||
+        strcmp(type, "switch_statement") == 0 ||
+        strcmp(type, "case_statement") == 0 ||
+        strcmp(type, "conditional_expression") == 0)) {
+        current_func->branch_count++;
     } else if (strcmp(type, "struct_specifier") == 0) {
         visit_struct_specifier(node, result, source, scope);
         return;

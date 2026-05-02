@@ -64,6 +64,7 @@ struct FunctionSymbol {
     bool is_static = false;             // 静态函数标记
     bool is_inline = false;             // 内联函数标记
     int cyclomatic_complexity = 0;      // 圈复杂度（由 Analyzer 计算）
+    int branch_count = 0;               // 分支节点数（ParserFrontend 统计，Analyzer 消费）
     int fan_in = 0;                     // 被调用次数（由 Analyzer 计算）
     int fan_out = 0;                    // 调用其他函数数量（由 Analyzer 计算）
     std::vector<uint32_t> callees;      // 调用的函数 Symbol ID 列表
@@ -151,6 +152,7 @@ struct RawSymbol {
     bool is_virtual = false;
     bool is_static = false;
     bool is_inline = false;
+    int branch_count = 0;       // 分支节点数（由 ParserFrontend 统计）
     // 复合类型扩展信息
     std::vector<FieldInfo> fields;
     std::vector<uint32_t> method_symbol_ids; // 暂存，由 Indexer 解析

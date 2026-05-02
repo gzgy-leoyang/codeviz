@@ -42,10 +42,15 @@
 
 ## 二、功能缺失（优先级：高）
 
-### 6. 圈复杂度占位逻辑
+### 6. ~~圈复杂度占位逻辑~~ ✅ 已修复
 - **问题**: 使用 `callees.size() + 1` 而非实际 AST 分支节点计数
-- **涉及文件**: `Src/Analyzer/Analyzer.cpp`
-- **目标**: 统计 `if/for/while/switch/case/&&/||` 等分支节点计算真实圈复杂度
+- **涉及文件**: `Src/Analyzer/Analyzer.cpp`, `Src/Parser/ParserFrontend.cpp`, `Src/Indexer/Indexer.cpp`, `Src/Common/DataTypes.h`
+- **修改内容**: 
+  - `RawSymbol`/`FunctionSymbol` 新增 `branch_count` 字段
+  - `ParserFrontend::traverse_cst` 在函数体内统计 if/for/while/do/switch/case/ternary 分支节点
+  - `Indexer::extract_function_detail` 传递 branch_count
+  - `Analyzer::compute_cyclomatic_complexity` 改用 `branch_count + 1`
+- **验证**: check_connection(1 if)=2, debug_print_status(1 switch+3 case)=5, 其余=1
 
 ### 7. 数据对象成员详情未提取
 - **问题**: `FieldInfo` 结构体完整但 `visit_field_declaration` 为空桩，成员名/类型/偏移/字节长度均未提取

@@ -35,10 +35,10 @@ AnalysisStats Analyzer::analyze(const AnalysisContext& ctx, const BuildMetadata&
 }
 
 int Analyzer::compute_cyclomatic_complexity(const FunctionSymbol& func) {
-    // 圈复杂度 = 分支数 + 1
-    // 当前简化实现：基于 callees 数量估算（真实实现需要 AST 分支节点统计）
-    // 真实实现应基于 if/for/while/switch/case/&&/|| 等分支节点计数
-    return static_cast<int>(func.callees.size()) + 1;
+    // 圈复杂度 M = 分支节点数 + 1
+    // 分支节点由 ParserFrontend 遍历 CST 时统计：
+    // if/for/while/do/switch/case/ternary ?:
+    return func.branch_count + 1;
 }
 
 FileStats Analyzer::compute_file_stats(const FileSymbol& file, const AnalysisContext& ctx) {
