@@ -81,6 +81,7 @@ static const char* HTML_TEMPLATE = R"HTML(
                 <button class="btn" onclick="resetLayout()">重置布局</button>
                 <button class="btn" onclick="fitGraph()">适应窗口</button>
             </div>
+            <div id="degrade-notice" style="display:none;position:absolute;top:56px;right:16px;background:#e94560;color:#fff;padding:6px 14px;border-radius:4px;font-size:12px;z-index:10;"></div>
             <div id="cy"></div>
             <div id="node-info">
                 <h4 id="ni-name">-</h4>
@@ -133,11 +134,16 @@ return elements;}
 function initCytoscape(elements){
 var container=document.getElementById('cy');if(!container)return;
 if(typeof cytoscape==='undefined'){container.innerHTML='<div style="padding:40px;color:#e94560;text-align:center;"><h3>Cytoscape.js 未加载</h3><p style="margin-top:8px;color:#aaa;font-size:13px;">本报告需要网络连接以加载 Cytoscape.js，或替换为离线版本</p></div>';return;}
-try{cy=cytoscape({container:container,elements:elements,
-style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':'11px','text-valign':'center','text-halign':'center',width:'60px',height:'30px','border-width':1,'border-color':'#e94560','background-color':'#16213e'}},
-{selector:'edge',style:{width:1.5,'line-color':'#0f3460','target-arrow-color':'#e94560','target-arrow-shape':'triangle','curve-style':'bezier'}},
+var nodeCount=elements.filter(function(e){return e.group==='nodes';}).length;
+var isLarge=nodeCount>1000;var notice=document.getElementById('degrade-notice');
+if(isLarge&&notice){notice.style.display='block';notice.textContent='大图模式: '+nodeCount+' 个节点，已启用性能优化';}
+try{var opts={container:container,elements:elements,
+style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':isLarge?'9px':'11px','text-valign':'center','text-halign':'center',width:isLarge?'40px':'60px',height:isLarge?'20px':'30px','border-width':1,'border-color':'#e94560','background-color':'#16213e'}},
+{selector:'edge',style:{width:isLarge?1:1.5,'line-color':'#0f3460','target-arrow-color':'#e94560','target-arrow-shape':'triangle','curve-style':'bezier'}},
 {selector:'node:selected',style:{'border-width':3,'border-color':'#e94560'}}],
-layout:{name:elements.filter(function(e){return e.group==='nodes';}).length>100?'cose':'cose',padding:20}});
+layout:{name:'cose',padding:20}};
+if(isLarge){opts.hideEdgesOnViewport=true;opts.motionBlur=true;opts.textEvents='no';opts.wheelSensitivity=0.5;}
+cy=cytoscape(opts);
 cy.on('tap','node',function(evt){var d=evt.target.data();document.getElementById('node-info').style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;});
 cy.on('tap',function(evt){if(evt.target===cy)document.getElementById('node-info').style.display='none';});
 }catch(e){console.error('Cytoscape init failed:',e);}}

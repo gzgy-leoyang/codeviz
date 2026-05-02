@@ -85,15 +85,19 @@
 - **修改内容**: 新建 `deploy.sh`，一次性检测所有依赖（core: cmake/g++/make + opt: python3/git/clang/libclang-dev/node/npm/graphviz），列出全部缺失后统一 y/n 确认安装，不自动构建
 - **验证**: 7 项通过，3 项可选缺失，非交互模式自动跳过安装
 
-### 11. 测试目录为空
+### 11. 🕐 测试目录为空
 - **问题**: `Test/` 目录无任何测试代码
 - **涉及文件**: `Test/` 全目录
 - **目标**: 按规范建立 `Test/CLI/`、`Test/Parser/`、`Test/Indexer/` 等测试子目录并编写测试
+- **状态**: 暂缓，后续处理
 
-### 12. 未实现大规模图降级机制
-- **问题**: 超过 1000 图元时未启用 WebGL 或虚拟滚动
-- **涉及文件**: `Src/Template/cytoscape_bridge.js`
-- **目标**: 实现 1000 节点阈值 WebGL 切换或虚拟滚动
+### 12. ~~未实现大规模图降级机制~~ ✅ 已修复
+- **问题**: 超过 1000 图元时未启用性能优化
+- **涉及文件**: `Src/Template/template.html`, `Src/Reporter/Reporter.cpp`
+- **修改内容**:
+  - HTML 模板新增 `degrade-notice` 提示元素
+  - `initCytoscape` 检测节点数 >1000 时启用: `hideEdgesOnViewport`(视口操作隐藏边)、`motionBlur`(动态模糊)、`textEvents:no`(减少事件开销)、降低标签/节点尺寸、边宽减细
+  - 右上角显示"大图模式: N 个节点"红色提示条
 
 ---
 
