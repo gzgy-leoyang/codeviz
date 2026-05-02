@@ -40,27 +40,41 @@ void init_logger(bool verbose) {
 CommandLineArgs parse_arguments(int argc, char* argv[]) {
     CommandLineArgs args;
 
-    CLI::App app{"codeviz - C/C++ 源码可视化分析工具"};
+    CLI::App app{R"(
+codeviz - C/C++ 源码可视化分析工具
+对 C/C++ 源码项目进行静态分析，生成交互式 HTML 可视化报告。
+包含函数调用图、头文件包含图、类型依赖图及统计热力图。
+
+用法: codeviz -p <project_path> [options])"};
 
     app.add_option("-p,--project", args.project_path,
-                   "待分析项目的根目录路径")->required();
+                   "待分析项目的根目录路径（必需）")
+       ->required()
+       ->check(CLI::ExistingDirectory);
 
     app.add_option("-e,--entry", args.entry_function,
-                   "调用图展开的入口函数名（默认: main）")
+                   "调用图展开的入口函数名")
        ->default_val("main");
 
     app.add_option("-d,--depth", args.expand_depth,
-                   "调用图展开深度（默认: 2）")
+                   "调用图递归展开深度（范围: 1~20）")
        ->default_val(2);
 
     app.add_option("-o,--output", args.output_path,
-                   "输出 HTML 报告路径（默认: report.html）")
+                   "输出的 HTML 报告文件路径")
        ->default_val("report.html");
 
     app.add_flag("-v,--verbose", args.verbose,
-                 "输出详细日志");
+                 "启用详细日志输出（用于调试）");
 
-    app.parse(argc, argv);
+    app.footer(R"(
+示例:
+  codeviz -p ./my_project
+  codeviz -p ./my_project -e main -d 3 -o report.html
+  codeviz -p ./my_project -v)");
+
+    try { app.parse(argc, argv); }
+    catch (const CLI::ParseError& e) { exit(app.exit(e)); }
 
     return args;
 }
@@ -154,9 +168,6 @@ int main(int argc, char* argv[]) {
     CommandLineArgs args;
     try {
         args = parse_arguments(argc, argv);
-    } catch (const CLI::ParseError& e) {
-        std::cerr << e.what() << std::endl;
-        return 1;
     } catch (const std::exception& e) {
         std::cerr << "[ERROR] 参数解析失败: " << e.what() << std::endl;
         return 1;
