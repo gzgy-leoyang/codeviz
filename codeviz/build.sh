@@ -29,4 +29,4 @@ cmake -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" "${SCRIPT_DIR}"
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
 echo "=== 构建完成 ==="
-echo "可执行文件: ${BUILD_DIR}/codeviz"
+echo "可执行文件: ${BUILD_DIR}/output/codeviz"

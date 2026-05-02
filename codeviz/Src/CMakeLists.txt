@@ -1,5 +1,8 @@
 # Src/CMakeLists.txt - 源码子目录构建配置
 
+# 设置可执行文件输出目录为 build/output/
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
+
 # 收集所有源文件
 set(CODEVIZ_SOURCES
     CLI/CLI.cpp
