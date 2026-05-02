@@ -106,6 +106,18 @@ std::vector<std::string> scan_source_files(const std::string& root) {
         for (const auto& entry : fs::recursive_directory_iterator(
                 root, fs::directory_options::skip_permission_denied)) {
             if (!entry.is_regular_file()) continue;
+
+            // 跳过构建目录中的文件（避免 CMakeCompilerId 等干扰分析结果）
+            std::string path = entry.path().string();
+            static const std::vector<std::string> SKIP_DIRS = {
+                "/build/", "/Build/", "/cmake-build-", "/_deps/", "/CMakeFiles/"
+            };
+            bool skip = false;
+            for (const auto& d : SKIP_DIRS) {
+                if (path.find(d) != std::string::npos) { skip = true; break; }
+            }
+            if (skip) continue;
+
             std::string ext = entry.path().extension().string();
             // 转小写
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
