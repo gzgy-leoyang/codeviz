@@ -7,10 +7,8 @@
 
 #include <string>
 #include <vector>
+#include <tree_sitter/api.h>
 #include "Common/DataTypes.h"
-
-// 使用不透明指针避免在头文件中暴露 tree-sitter 类型
-struct TSNode_opaque;
 
 class ParserFrontend {
 public:
@@ -30,63 +28,74 @@ private:
 
     /**
      * 深度优先遍历 CST，维护作用域栈，分发到各子处理函数
+     * @param current_func 当前正在遍历的函数符号（收集 callee 用），可为 nullptr
      */
-    void traverse_cst(void* node, FileParseResult& result,
-                      const std::string& source, std::vector<std::string>& scope);
+    void traverse_cst(TSNode node, FileParseResult& result,
+                      const std::string& source, std::vector<std::string>& scope,
+                      RawSymbol* current_func);
 
     /**
      * 处理函数定义，产出 RawSymbol(kind=FUNC)
      */
-    void visit_function_definition(void* node, FileParseResult& result,
-                                   const std::string& source, std::vector<std::string>& scope);
+    void visit_function_definition(TSNode node, FileParseResult& result,
+                                   const std::string& source,
+                                   std::vector<std::string>& scope);
 
     /**
      * 提取函数签名（返回类型、参数列表、虚/静/内联标记）
      */
-    void visit_function_declarator(void* node, RawSymbol& sym, const std::string& source);
+    void visit_function_declarator(TSNode node, RawSymbol& sym,
+                                    const std::string& source);
 
     /**
      * 处理函数调用，记录 callee_name
      */
-    void visit_call_expression(void* node, FileParseResult& result, const std::string& source,
-                               RawSymbol* current_func);
+    void visit_call_expression(TSNode node, FileParseResult& result,
+                                const std::string& source,
+                                RawSymbol* current_func);
 
     /**
      * 处理结构体定义
      */
-    void visit_struct_specifier(void* node, FileParseResult& result,
-                                const std::string& source, std::vector<std::string>& scope);
+    void visit_struct_specifier(TSNode node, FileParseResult& result,
+                                 const std::string& source,
+                                 std::vector<std::string>& scope);
 
     /**
      * 处理类定义，含基类列表
      */
-    void visit_class_specifier(void* node, FileParseResult& result,
-                               const std::string& source, std::vector<std::string>& scope);
+    void visit_class_specifier(TSNode node, FileParseResult& result,
+                                const std::string& source,
+                                std::vector<std::string>& scope);
 
     /**
      * 提取成员字段信息（名称、类型、访问修饰符）
      */
-    void visit_field_declaration(void* node, RawSymbol& sym, const std::string& source);
+    void visit_field_declaration(TSNode node, RawSymbol& sym,
+                                  const std::string& source);
 
     /**
      * 处理宏定义，产出 RawSymbol(kind=MACRO)
      */
-    void visit_preproc_def(void* node, FileParseResult& result, const std::string& source);
+    void visit_preproc_def(TSNode node, FileParseResult& result,
+                            const std::string& source);
 
     /**
      * 处理 #include 指令，记录包含关系
      */
-    void visit_preproc_include(void* node, FileParseResult& result, const std::string& source);
+    void visit_preproc_include(TSNode node, FileParseResult& result,
+                                const std::string& source);
 
     /**
      * 提取节点对应的源码文本
      */
-    std::string get_node_text(void* node, const std::string& source);
+    std::string get_node_text(TSNode node, const std::string& source);
 
     /**
      * 拼接完全限定名
      */
-    std::string get_qualified_name(const std::string& base, const std::vector<std::string>& scope);
+    std::string get_qualified_name(const std::string& base,
+                                    const std::vector<std::string>& scope);
 
     /**
      * 进入作用域
@@ -98,7 +107,7 @@ private:
      */
     void exit_scope(std::vector<std::string>& scope);
 
-    bool is_cpp_ = false; // 当前文件是否为 C++
+    bool is_cpp_ = false;
 };
 
 #endif // CODEVIZ_PARSER_FRONTEND_H

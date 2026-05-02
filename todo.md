@@ -10,10 +10,13 @@
   - 实现: 实现完整的 tree-sitter-cmake CST 递归遍历（`traverse_cst` → `handle_normal_command` → 各 `visit_*`）；移除正则回退；参数提取采用递归式 `flatten_arguments` 遍历隐藏的 `_paren_argument` 节点
 - **验证**: 编译无警告；对 test_project 运行正常，成功提取 project_name=test_project, cmake_version=3.10, target=test_app, link_libs=pthread；HTML 报告正常生成
 
-### 2. ParserFrontend 用自由函数替代类方法
+### 2. ~~ParserFrontend 用自由函数替代类方法~~ ✅ 已修复
 - **问题**: 所有 `visit_*` 成员方法均为空桩，实际解析逻辑在文件内静态自由函数中
 - **涉及文件**: `Src/Parser/ParserFrontend.h`, `Src/Parser/ParserFrontend.cpp`
-- **目标**: 将自由函数逻辑迁移到类方法中，使类接口正常工作
+- **修改内容**:
+  - 头文件: `void*` → `TSNode`；移除 `TSNode_opaque` 前向声明；`traverse_cst` 新增 `RawSymbol* current_func` 参数
+  - 实现: 将 `handle_function_def`→`visit_function_definition`、`handle_call_expr`→`visit_call_expression`、`handle_struct`→`visit_struct_specifier`、`handle_class`→`visit_class_specifier`、`handle_macro`→`visit_preproc_def`、`handle_include`→`visit_preproc_include`、`traverse`→`traverse_cst`；`visit_function_declarator` 和 `visit_field_declaration` 保留桩（对应 #7、#9）；移除所有空桩实现（341-377 行）
+- **验证**: 编译无警告；test_project 全流程正常，符号数/调用边完全一致
 
 ### 3. Reporter 使用字符串替换而非 Inja 模板引擎
 - **问题**: 手动 `std::string::find+replace` 替代了 Inja 模板渲染
