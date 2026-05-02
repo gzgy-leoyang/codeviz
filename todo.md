@@ -27,11 +27,6 @@
   - 数据使用 `data.dump(2)` 格式化输出便于调试
 - **验证**: 编译无警告；test_project 全流程正常，HTML 中 `project_name` 正确渲染，所有 Inja 标签被替换（`{{{ }}}` 零残留）
 
-### 4. ECharts 未集成
-- **问题**: 技术选型指定 ECharts 为补充图表库，但未实现
-- **涉及文件**: `Src/Template/template.html`, `Src/Template/cytoscape_bridge.js`, `Src/Reporter/Reporter.cpp`
-- **目标**: 集成 ECharts 作为补充图表（或从文档中移除该选型）
-
 ### 5. ~~GraphBuilder::build_include_graph 为空桩~~ ✅ 已修复
 - **问题**: 函数声明存在但无实际操作
 - **涉及文件**: `Src/GraphBuilder/GraphBuilder.cpp`
@@ -83,10 +78,12 @@
 
 ## 三、基础设施缺失（优先级：中）
 
-### 10. 缺少自动部署脚本
+### 10. ~~缺少自动部署脚本~~ ✅ 已修复
 - **问题**: 无依赖检查/自动安装脚本
-- **涉及文件**: 新建 `deploy.sh` 或类似脚本
+- **涉及文件**: `deploy.sh`
 - **目标**: 检查 python3、clang、libclang-dev、graphviz、npm 等依赖并引导安装
+- **修改内容**: 新建 `deploy.sh`，检查核心构建依赖（cmake/g++/make）+ 可选开发工具链（python3/git/clang/libclang-dev/node/npm）+ 可视化工具（graphviz）；汇总并引导安装缺失的核心依赖；自动调用 build.sh 构建
+- **验证**: 7 项通过（cmake/g++/make/python3/git/node/npm），3 项可选缺失，构建成功
 
 ### 11. 测试目录为空
 - **问题**: `Test/` 目录无任何测试代码
