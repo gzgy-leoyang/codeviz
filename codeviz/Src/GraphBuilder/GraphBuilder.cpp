@@ -19,8 +19,9 @@ void GraphBuilder::build(AnalysisContext& ctx, const std::string& entry_function
         spdlog::warn("未找到入口函数 '{}', 将构建完整调用图", entry_function);
     }
 
-    // 2. 构建调用图
-    build_call_graph(ctx, entry_id, depth);
+    // 2. 先计算全量扇入扇出（在替换 call_edges 之前）
+    compute_fan_in(ctx);
+    compute_fan_out(ctx);
 
     // 3. 构建包含图
     build_include_graph(ctx);
@@ -28,9 +29,8 @@ void GraphBuilder::build(AnalysisContext& ctx, const std::string& entry_function
     // 4. 构建类型依赖图
     build_type_dependency_graph(ctx);
 
-    // 5. 计算扇入扇出
-    compute_fan_in(ctx);
-    compute_fan_out(ctx);
+    // 5. 构建调用图（替换 ctx.call_edges 为 BFS 子图，受 -d 深度控制）
+    build_call_graph(ctx, entry_id, depth);
 
     spdlog::info("图构建完成: {} 条调用边, {} 条包含边, {} 条类型依赖边",
                  ctx.call_edges.size(), ctx.include_edges.size(), ctx.type_edges.size());
@@ -118,7 +118,6 @@ void GraphBuilder::build_call_graph(AnalysisContext& ctx, uint32_t entry_id, int
     spdlog::debug("构建调用图: 入口ID={}, 最大深度={}", entry_id, max_depth);
 
     if (entry_id == 0) {
-        // 无入口函数，保留 Indexer 填充的所有 call_edges
         return;
     }
 
@@ -126,11 +125,9 @@ void GraphBuilder::build_call_graph(AnalysisContext& ctx, uint32_t entry_id, int
     std::vector<CallEdge> bfs_edges;
     bfs_traverse(entry_id, max_depth, ctx, bfs_edges);
 
-    // 替换 ctx.call_edges 为 BFS 遍历得到的子图
-    // 注意：这里保留全量边（Analyzer 需要完整统计），通过标记区分
-    // 实际上按设计规范，call_edges 保持全量，BFS 仅决定前端展示范围
-    // 此处实现保留全量，由 Reporter 根据深度过滤展示
-    spdlog::debug("BFS 完成，展示子图含 {} 条调用边", bfs_edges.size());
+    // 替换 ctx.call_edges 为 BFS 子图（扇入扇出已在替换前完成计算）
+    ctx.call_edges = std::move(bfs_edges);
+    spdlog::debug("BFS 完成，子图 {} 条调用边（深度={}）", ctx.call_edges.size(), max_depth);
 }
 
 void GraphBuilder::bfs_traverse(uint32_t start_id, int max_depth, AnalysisContext& ctx,
