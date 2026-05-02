@@ -183,13 +183,13 @@
 -- 2.5.3.2 DR_2:表格呈现数据结构成员
 -- 2.5.3.3 DR_3:图形连线呈现数据结构包含关系
 - 2.5.4 SR_4: 当节点数量过多时的主动降级
--- 2.5.4.1 DR_1: 当图元数量超过1000阈值时，前端自动启用 WebGL 渲染或虚拟滚动/聚合节点，防止浏览器卡死
+-- 2.5.4.1 DR_1: 当图元数量超过1000阈值时，前端自动启用 Cytoscape.js 性能选项（hideEdgesOnViewport、motionBlur、缩小节点/标签），防止浏览器卡死
 - 2.5.5 SR_5: 生成的 HTML 文件支持离线使用
 - 2.5.5.1 DR_1: HTML为自包含文件，所有使用的 js/css内嵌
 
 ### 2.6 IR_6: 支持运行环境的自动部署
 - 2.6.1 SR_1: 提供自动部署脚本
--- 2.6.1.1 DR_1: 检查工具的依赖资源,包括：python3、clang、libclang-dev、graphviz、npm
+-- 2.6.1.1 DR_1: 检查工具的依赖资源,包括：python3、clang、libclang-dev、graphviz、npm、firefox
 -- 2.6.1.2 DR_2: 自动安装工具的依赖,限于用户有权限的包管理器并需用户确认
 -- 2.6.1.3 DR_3: 自动检查运行环境，在安装工具过程中使用对应的包管理器
 
@@ -286,7 +286,7 @@ flowchart TD
 
 | 节点 | 说明 |
 | :--- | :--- |
-| 代码可视化工具开发环境 | 在开发者的 Linux 工作站上，使用 C++ 源码和第三方库（tree-sitter、CLI11 等），通过 CMake + GCC 编译生成独立可执行文件 codeviz。前端资源（Cytoscape.js、ECharts）以字符串形式内嵌在可执行文件中，无需额外部署。 |
+| 代码可视化工具开发环境 | 在开发者的 Linux 工作站上，使用 C++ 源码和第三方库（tree-sitter、CLI11 等），通过 CMake + GCC 编译生成独立可执行文件 codeviz。前端资源（Cytoscape.js）以字符串形式内嵌在可执行文件中，无需额外部署。 |
 | 运行时环境 | 用户在 Linux 终端中执行 ./codeviz -p <项目路径> -o report.html。工具只读地读取待分析项目的源文件（.c/.cpp/.h/.hpp）、CMakeLists.txt 和 compile_commands.json（若存在），生成一个自包含的 index.html 文件。所有被分析对象均为纯文本文件，工具不运行或编译它们。 |
 | 查看环境 | 用户双击或用浏览器打开生成的 index.html，所有可视化渲染在用户本地浏览器中完成，无需网络连接（离线可用）。 |
 | 虚线箭头 | 表示可执行文件的分发（从开发环境复制到运行环境）。 |
@@ -341,7 +341,7 @@ sequenceDiagram
     CLI ->> CLI: 写入 index.html
 
     User ->> Browser: 打开 index.html
-    Browser ->> Browser: Cytoscape.js / ECharts 渲染
+    Browser ->> Browser: Cytoscape.js 渲染
 ```
 
 ### 3.4 场景视图
@@ -404,7 +404,7 @@ graph TD
     
     ROOT --> E1["📁 Test/<br>CMakeLists.txt<br>CLI/<br>Parser/<br>Indexer/"]
     
-    ROOT --> B1["📁 build/<br>codeviz (可执行文件)"]
+    ROOT --> B1["📁 build/<br>build/output/codeviz (可执行文件)"]
 
 ```
 | 目录/文件 | 用途 |
@@ -510,7 +510,6 @@ graph TD
 |  日志库  | spdlog | 高性能异步日志，header-only，业界广泛采用 |
 |  CMake 解析  | tree-sitter-cmake | 与 tree-sitter 生态统一，无需引入新依赖 |
 |  HTML 模板引擎  | Inja | 类 Jinja2 语法，轻量 header-only，专为 C++ 设计 |
-|  前端补充图表库  | ECharts | 图表类型丰富，大数据渲染性能好，开发效率高 |
 
 ### 4.2 核心数据结构
 数据结构包括两层：
@@ -561,6 +560,9 @@ struct FileParseResult {
     std::string file_path;
     std::vector<RawSymbol> symbols;
     std::vector<std::pair<std::string, std::string>> includes; // (includer, includee)
+    int total_lines = 0;      // 文件总行数
+    int code_lines = 0;       // 有效代码行数
+    int comment_lines = 0;    // 注释行数
 };
 ```
 5. 符号索引模块 --> 图构建模块
@@ -640,6 +642,13 @@ struct AnalysisStats {
     std::vector<FunctionStats> function_stats;
     std::vector<CircularInclude> circular_includes;
 };
+
+/// 外部符号引用（来自未在本项目中定义的函数/变量）
+struct ExternalRef {
+    std::string caller_name;   // 调用者符号名
+    std::string callee_name;   // 被调用者符号名（外部）
+    std::string library;       // 推测的库名
+};
 ```
 9. HTML 报告生成器 -->文件系统
 流动内容：最终生成的 HTML 文件内容。
@@ -693,6 +702,7 @@ struct FunctionSymbol {
     bool is_static;                 // 静态函数标记
     bool is_inline;                 // 内联函数标记
     int cyclomatic_complexity;      // 圈复杂度（由 Analyzer 计算）
+    int branch_count;               // 分支节点数（ParserFrontend 统计）
     int fan_in;                     // 被调用次数（由 Analyzer 计算）
     int fan_out;                    // 调用其他函数数量（由 Analyzer 计算）
     std::vector<uint32_t> callees;  // 调用的函数 Symbol ID 列表
@@ -768,6 +778,9 @@ struct AnalysisContext {
     std::vector<TypeDependencyEdge> type_edges;
     std::vector<SymbolRef> references;
     
+    // 外部符号引用
+    std::vector<ExternalRef> external_refs;
+
     // 项目元数据
     std::string project_root;
     std::vector<std::string> source_files;
@@ -902,29 +915,32 @@ public:
 ##### 内部函数
 | 函数签名 | 功能 |
 | :--- | :--- |
-| void init_parser()	|初始化 tree-sitter-cmake 解析器（若未初始化）|
-| void traverse_cst(TSNode root, BuildMetadata& meta, const std::string& source)	|遍历 CST 根节点，分发到各子处理函数|
-| void visit_project(TSNode node, BuildMetadata& meta, const std::string& source)	|提取项目名称和版本|
-| void visit_add_executable(TSNode node, BuildMetadata& meta, const std::string& source)	|提取可执行目标名|
-| void visit_add_library(TSNode node, BuildMetadata& meta, const std::string& source)	|提取库目标名|
-| void visit_target_link_libraries(TSNode node, BuildMetadata& meta, const std::string& source)	|提取目标及其链接库列表|
-| void visit_set_compiler(TSNode node, BuildMetadata& meta, const std::string& source)	|提取 CMAKE_C_COMPILER / CMAKE_CXX_COMPILER|
+| void traverse_cst(TSNode root, BuildMetadata& meta, const std::string& source)	|递归遍历 CST，遇到 normal_command 时派发|
+| void handle_normal_command(TSNode node, BuildMetadata& meta, const std::string& source)	|查找 identifier + argument_list，分发到 visit_*|
+| void visit_project(TSNode arg_list, BuildMetadata& meta, const std::string& source)	|提取项目名称和版本|
+| void visit_cmake_minimum_required(TSNode arg_list, BuildMetadata& meta, const std::string& source)	|提取 cmake_minimum_required 版本号|
+| void visit_add_executable(TSNode arg_list, BuildMetadata& meta, const std::string& source)	|提取可执行目标名|
+| void visit_add_library(TSNode arg_list, BuildMetadata& meta, const std::string& source)	|提取库目标名|
+| void visit_target_link_libraries(TSNode arg_list, BuildMetadata& meta, const std::string& source)	|提取目标及其链接库列表|
+| void visit_set_compiler(TSNode arg_list, BuildMetadata& meta, const std::string& source)	|提取 CMAKE_C_COMPILER / CMAKE_CXX_COMPILER|
+| void visit_add_subdirectory(TSNode arg_list, BuildMetadata& meta, const std::string& source)	|提取子目录路径|
 | std::string get_node_text(TSNode node, const std::string& source)	|从源码中提取节点文本|
 
 ##### 主流程步骤
-1. 初始化 tree-sitter-cmake 解析器（首次调用时）。
+1. 创建 tree-sitter 解析器，设置 tree-sitter-cmake 语言。
 2. 调用 ts_parser_parse_string 解析 CMakeFile::content，获取 CST 根节点。
-3. 深度优先遍历 CST，根据节点类型调用对应的 visit_* 处理函数。
-4. 将提取的信息填充到 BuildMetadata 中。
-5. 对于 add_subdirectory 指令，记录子目录路径（实际读取和递归由 CLI 模块负责）。
-6. 返回 0；
+3. traverse_cst 递归遍历 CST，遇到 normal_command 节点时通过 handle_normal_command 分发到 visit_* 处理函数。
+4. 各 visit_* 函数通过 flatten_arguments 递归收集 argument_list 中的参数。
+5. 将提取的信息填充到 BuildMetadata 中。
+6. 对于 add_subdirectory 指令，记录子目录路径（实际读取和递归由 CLI 模块负责）。
+7. 返回 0 表示成功，-1 表示解析失败。
 
 ##### 依赖的数据结构
 - 输入接口数据：CMakeFile
 - 输出核心数据：BuildMetadata
 
 ##### 异常处理
-tree-sitter 解析失败或节点文本提取失败：抛出 std::runtime_error，由 CLI 模块捕获并跳过该文件。
+tree-sitter 解析失败：抛出 std::runtime_error，由 CLI 模块捕获并跳过该文件。
 
 #### 4.3.3 编译数据库解析模块
 ##### 职责
@@ -998,7 +1014,7 @@ public:
 
 | 函数签名 | 功能 |
 | :--- | :--- |
-| void init_parser(const std::string& file_ext) | 根据扩展名选择 tree-sitter-c 或 tree-sitter-cpp 并初始化 |
+| void init_parser(const std::string& file_ext) | 根据扩展名选择 tree-sitter-c 或 tree-sitter-cpp 解析器 |
 | void traverse_cst(TSNode root, FileParseResult& result, const std::string& source) | 深度优先遍历 CST，维护作用域栈，分发到各子处理函数 |
 | void visit_function_definition(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope) | 处理函数定义，产出 RawSymbol(kind=FUNC) |
 | void visit_function_declarator(TSNode node, RawSymbol& sym, const std::string& source) | 提取函数签名（返回类型、参数列表、虚/静/内联标记） |
@@ -1133,7 +1149,7 @@ public:
 | :--- | :--- |
 | uint32_t find_entry_id(const AnalysisContext& ctx, const std::string& entry_name) | 根据名称定位入口函数的 Symbol ID |
 | void build_call_graph(AnalysisContext& ctx, uint32_t entry_id, int max_depth) | 从入口函数 BFS 遍历构建调用图，生成 CallEdge |
-| void build_include_graph(AnalysisContext& ctx) | 将 include 关系转换为 IncludeEdge 填充到 ctx |
+| void build_include_graph(AnalysisContext& ctx) | 验证 IncludeEdge 有效性，统计被包含次数，识别热点头文件 |
 | void build_type_dependency_graph(AnalysisContext& ctx) | 分析 CompositeSymbol 之间的字段类型和继承关系，生成 TypeDependencyEdge |
 | void compute_fan_in(AnalysisContext& ctx) | 基于 CallEdge 统计每个函数的被调用次数 |
 | void compute_fan_out(AnalysisContext& ctx) | 基于 CallEdge 统计每个函数调用的不同函数数 |
@@ -1142,7 +1158,7 @@ public:
 ##### 主流程步骤
 1. 定位入口函数的 Symbol ID（通过完全限定名或短名称匹配）。若未找到则抛出异常。
 2. 调用 build_call_graph 从入口开始 BFS 遍历，生成 CallEdge 并填充 ctx.call_edges。
-3. 调用 build_include_graph 将 ctx 中暂存的 include 关系转换为正式的 IncludeEdge。
+3. 调用 build_include_graph 验证 IncludeEdge 有效性并统计文件被包含热度。
 4. 调用 build_type_dependency_graph 分析类型之间的包含和继承关系，生成 TypeDependencyEdge。
 5. 分别调用 compute_fan_in 和 compute_fan_out，基于 CallEdge 统计每个函数的扇入和扇出，回填到对应的 FunctionSymbol 中。
 
@@ -1230,7 +1246,7 @@ public:
 
 | 函数签名 | 功能 |
 | :--- | :--- |
-| std::string load_template() | 加载内嵌的 HTML 骨架模板字符串 |
+| std::string load_template() | 加载内嵌的 HTML 骨架模板字符串（C++ string literal）|
 | json build_json(const std::vector<SymbolMetadata>& symbols, const AnalysisStats& stats, const AnalysisContext& ctx) | 构建完整的 JSON 数据对象 |
 | json convert_call_graph(const std::vector<CallEdge>& edges, const std::vector<Symbol>& symbols) | 将调用边转换为 Cytoscape.js nodes/edges 格式 |
 | json convert_include_graph(const std::vector<IncludeEdge>& edges, const std::vector<FileSymbol>& files) | 将包含边转换为 Cytoscape.js nodes/edges 格式 |
@@ -1244,7 +1260,7 @@ public:
    - 顶层包含 metadata（项目名、文件数、函数数、生成时间）、symbols、call_graph、include_graph、type_graph、hotspots、anomalies。
    - 各图数据通过 convert_* 函数转换为 Cytoscape.js 兼容的 { nodes: [...], edges: [...] } 格式。
    - 热力图和异常数据分别通过 build_hotspots 和 build_anomalies 构建。
-3. 使用 Inja 模板引擎，将 JSON 数据渲染到模板的 `{{ data }}` 占位符中。
+3. 使用 Inja 模板引擎，将 JSON 数据和 Cytoscape.js/桥接脚本注入到模板占位符中。
 4. 返回 HTMLReport，包含完整 HTML 字符串和输出路径。
 
 ##### 依赖的数据结构
