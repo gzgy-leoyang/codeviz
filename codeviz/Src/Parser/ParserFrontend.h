@@ -108,6 +108,8 @@ private:
     void exit_scope(std::vector<std::string>& scope);
 
     bool is_cpp_ = false;
+    AccessSpecifier current_access_ = AccessSpecifier::NONE;  // 当前类体内的访问修饰符
+    RawSymbol* current_composite_ = nullptr;  // 当前正在遍历的结构体/类符号
 };
 
 #endif // CODEVIZ_PARSER_FRONTEND_H

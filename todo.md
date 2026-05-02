@@ -52,20 +52,32 @@
   - `Analyzer::compute_cyclomatic_complexity` 改用 `branch_count + 1`
 - **验证**: check_connection(1 if)=2, debug_print_status(1 switch+3 case)=5, 其余=1
 
-### 7. 数据对象成员详情未提取
-- **问题**: `FieldInfo` 结构体完整但 `visit_field_declaration` 为空桩，成员名/类型/偏移/字节长度均未提取
-- **涉及文件**: `Src/Parser/ParserFrontend.cpp`, `Src/Parser/ParserFrontend.h`
-- **目标**: 实现字段声明解析，填充 FieldInfo 数据
+### 7. ~~数据对象成员详情未提取~~ ✅ 已修复
+- **问题**: `FieldInfo` 结构体完整但 `visit_field_declaration` 为空桩
+- **涉及文件**: `Src/Parser/ParserFrontend.cpp`, `Src/Parser/ParserFrontend.h`, `Src/Common/DataTypes.h`
+- **修改内容**:
+  - `visit_field_declaration`: 提取字段类型（primitive_type/type_identifier/qualified_identifier）和字段名（field_identifier/declarator）；新增 `current_composite_` 成员变量跟踪当前结构体；新增 `current_access_` 跟踪访问修饰符
+  - 结构体/类体遍历从 `child_by_field(node, "body")` 改为按子节点类型查找 `field_declaration_list`/`body`
+  - Reporter 新增 `composites` JSON 数组输出字段数据
+- **验证**: ServerInfo(ip/port), LogInfo(path/level), Config(server/log) 字段正确提取，访问修饰符正确
 
-### 8. 外部库调用分析未实现
+### 8. ~~外部库调用分析未实现~~ ✅ 已修复
 - **问题**: 无法分析 `.so`/`.a` 库调用，外部符号仅标记为 `UINT32_MAX`
-- **涉及文件**: `Src/Indexer/Indexer.cpp`, `Src/GraphBuilder/GraphBuilder.cpp`
-- **目标**: 实现外部库符号关联分析
+- **涉及文件**: `Src/Indexer/Indexer.cpp`, `Src/Common/DataTypes.h`, `Src/Reporter/Reporter.cpp`
+- **修改内容**:
+  - `DataTypes.h`: 新增 `ExternalRef` 结构体和 `external_refs` 到 AnalysisContext
+  - `Indexer::process_calls`: 收集外部符号引用并按命名空间前缀推测库名
+  - `Reporter::build_json`: 将 `external_refs` 序列化到 JSON
+- **验证**: 3 个外部引用被正确收集（handler.set_url, handler.handle, name）
 
-### 9. 函数签名细节未提取
+### 9. ~~函数签名细节未提取~~ ✅ 已修复
 - **问题**: `return_type`、`parameters`、`is_virtual`、`is_static`、`is_inline` 均未填充
 - **涉及文件**: `Src/Parser/ParserFrontend.cpp`
-- **目标**: 实现 `visit_function_declarator` 提取完整函数签名
+- **修改内容**:
+  - `visit_function_definition`: 从 `type` 子节点提取返回类型
+  - `visit_function_declarator`: 从 `parameters` 子节点提取参数列表；从父节点检查 virtual/static/inline 关键字
+  - Reporter 从 `ctx.functions` 查找签名数据序列化到 JSON
+- **验证**: 17 个函数均有返回类型，BaseHandler::name 标记为 virtual=true
 
 ---
 

@@ -209,11 +209,22 @@ void ParserFrontend::traverse_cst(TSNode node, FileParseResult& result,
         strcmp(type, "case_statement") == 0 ||
         strcmp(type, "conditional_expression") == 0)) {
         current_func->branch_count++;
+    } else if (strcmp(type, "field_declaration") == 0) {
+        if (current_composite_) {
+            visit_field_declaration(node, *current_composite_, source);
+        }
+        return;
     } else if (strcmp(type, "struct_specifier") == 0) {
         visit_struct_specifier(node, result, source, scope);
         return;
     } else if (strcmp(type, "class_specifier") == 0) {
         visit_class_specifier(node, result, source, scope);
+        return;
+    } else if (strcmp(type, "access_specifier") == 0) {
+        std::string text = node_text(node, source);
+        if (text == "public") current_access_ = AccessSpecifier::PUBLIC;
+        else if (text == "protected") current_access_ = AccessSpecifier::PROTECTED;
+        else if (text == "private") current_access_ = AccessSpecifier::PRIVATE;
         return;
     } else if (strcmp(type, "preproc_def") == 0 ||
                strcmp(type, "preproc_function_def") == 0) {
@@ -270,7 +281,13 @@ void ParserFrontend::visit_function_definition(TSNode node,
     sym.line_start = ts_node_start_point(node).row + 1;
     sym.line_end   = ts_node_end_point(node).row + 1;
 
-    // 提取函数签名（如后续需要可在此展开）
+    // 提取返回类型
+    TSNode type_node = child_by_field(node, "type");
+    if (!ts_node_is_null(type_node)) {
+        sym.return_type = node_text(type_node, source);
+    }
+
+    // 提取函数签名（参数、虚/静/内联标记）
     visit_function_declarator(decl, sym, source);
 
     result.symbols.push_back(sym);
@@ -287,9 +304,36 @@ void ParserFrontend::visit_function_definition(TSNode node,
 
 void ParserFrontend::visit_function_declarator(TSNode node, RawSymbol& sym,
                                                 const std::string& source) {
-    // TODO: 提取返回类型、参数列表、虚/静/内联标记
-    // 对应设计文档 4.3.4 visit_function_declarator
-    // 当前版本暂不提取，留给后续实现（见 todo.md 项 #9）
+    // 提取参数列表
+    TSNode param_list = child_by_field(node, "parameters");
+    if (!ts_node_is_null(param_list)) {
+        uint32_t n = ts_node_child_count(param_list);
+        for (uint32_t i = 0; i < n; i++) {
+            TSNode child = ts_node_child(param_list, i);
+            const char* type = ts_node_type(child);
+            if (strcmp(type, "parameter_declaration") == 0) {
+                sym.parameters.push_back(node_text(child, source));
+            }
+        }
+    }
+
+    // 从父节点 function_definition 检查 virtual/static/inline 修饰符
+    TSNode parent = ts_node_parent(node);
+    if (!ts_node_is_null(parent)) {
+        uint32_t n = ts_node_child_count(parent);
+        for (uint32_t i = 0; i < n; i++) {
+            TSNode child = ts_node_child(parent, i);
+            // 匿名 token 的直接类型名就是关键字本身
+            const char* ctype = ts_node_type(child);
+            if (strcmp(ctype, "virtual") == 0 || strcmp(ctype, "virtual_specifier") == 0) {
+                sym.is_virtual = true;
+            } else if (strcmp(ctype, "static") == 0) {
+                sym.is_static = true;
+            } else if (strcmp(ctype, "inline") == 0) {
+                sym.is_inline = true;
+            }
+        }
+    }
 }
 
 void ParserFrontend::visit_call_expression(TSNode node,
@@ -328,9 +372,22 @@ void ParserFrontend::visit_struct_specifier(TSNode node,
     result.symbols.push_back(sym);
 
     scope.push_back(struct_name);
-    TSNode body = child_by_field(node, "body");
-    if (!ts_node_is_null(body)) {
-        traverse_cst(body, result, source, scope, nullptr);
+    // 通过子节点类型查找 field_declaration_list（C 语法）或 body（C++ 语法）
+    TSNode field_list = {};
+    uint32_t nc = ts_node_child_count(node);
+    for (uint32_t i = 0; i < nc; i++) {
+        TSNode child = ts_node_child(node, i);
+        const char* t = ts_node_type(child);
+        if (strcmp(t, "field_declaration_list") == 0 || strcmp(t, "body") == 0) {
+            field_list = child;
+            break;
+        }
+    }
+    if (!ts_node_is_null(field_list)) {
+        current_access_ = AccessSpecifier::PUBLIC;
+        current_composite_ = &result.symbols.back();
+        traverse_cst(field_list, result, source, scope, nullptr);
+        current_composite_ = nullptr;
     }
     scope.pop_back();
 }
@@ -376,18 +433,67 @@ void ParserFrontend::visit_class_specifier(TSNode node,
     result.symbols.push_back(sym);
 
     scope.push_back(class_name);
-    TSNode body = child_by_field(node, "body");
-    if (!ts_node_is_null(body)) {
-        traverse_cst(body, result, source, scope, nullptr);
+    TSNode field_list = {};
+    uint32_t nc = ts_node_child_count(node);
+    for (uint32_t i = 0; i < nc; i++) {
+        TSNode child = ts_node_child(node, i);
+        const char* t = ts_node_type(child);
+        if (strcmp(t, "field_declaration_list") == 0 || strcmp(t, "body") == 0) {
+            field_list = child;
+            break;
+        }
+    }
+    if (!ts_node_is_null(field_list)) {
+        current_access_ = AccessSpecifier::PRIVATE;
+        current_composite_ = &result.symbols.back();
+        traverse_cst(field_list, result, source, scope, nullptr);
+        current_composite_ = nullptr;
     }
     scope.pop_back();
 }
 
 void ParserFrontend::visit_field_declaration(TSNode node, RawSymbol& sym,
                                               const std::string& source) {
-    // TODO: 提取成员字段信息（名称、类型、访问修饰符）
-    // 对应设计文档 4.3.4 visit_field_declaration
-    // 当前版本暂不提取，留给后续实现（见 todo.md 项 #7）
+    // 提取字段类型
+    std::string field_type;
+    uint32_t n = ts_node_child_count(node);
+    for (uint32_t i = 0; i < n; i++) {
+        TSNode child = ts_node_child(node, i);
+        const char* ctype = ts_node_type(child);
+        if (strcmp(ctype, "type_identifier") == 0 ||
+            strcmp(ctype, "primitive_type") == 0 ||
+            strcmp(ctype, "sized_type_specifier") == 0 ||
+            strcmp(ctype, "qualified_identifier") == 0 ||
+            strcmp(ctype, "namespace_identifier") == 0) {
+            field_type = node_text(child, source);
+            break;
+        }
+    }
+    if (field_type.empty()) return;
+
+    // 提取字段名（可能含多个：int a, b, c;）
+    for (uint32_t i = 0; i < n; i++) {
+        TSNode child = ts_node_child(node, i);
+        const char* ctype = ts_node_type(child);
+        std::string field_name;
+
+        if (strcmp(ctype, "field_identifier") == 0) {
+            field_name = node_text(child, source);
+        } else if (strcmp(ctype, "declarator") == 0) {
+            TSNode inner = child_by_field(child, "declarator");
+            if (!ts_node_is_null(inner)) {
+                field_name = node_text(inner, source);
+            }
+        }
+
+        if (!field_name.empty()) {
+            FieldInfo fi;
+            fi.name = field_name;
+            fi.type = field_type;
+            fi.access = current_access_;
+            sym.fields.push_back(fi);
+        }
+    }
 }
 
 void ParserFrontend::visit_preproc_def(TSNode node,

@@ -239,6 +239,13 @@ struct AnalysisStats {
     std::vector<CircularInclude> circular_includes;
 };
 
+/// 外部符号引用（来自未在本项目中定义的函数/变量）
+struct ExternalRef {
+    std::string caller_name;   // 调用者符号名
+    std::string callee_name;   // 被调用者符号名（外部）
+    std::string library;       // 推测的库名
+};
+
 // 9. HTML 报告生成器到文件系统
 struct HTMLReport {
     std::string content;     // 完整 HTML 字符串
@@ -279,6 +286,9 @@ struct AnalysisContext {
     std::vector<IncludeEdge> include_edges;
     std::vector<TypeDependencyEdge> type_edges;
     std::vector<SymbolRef> references;
+
+    // 外部符号引用
+    std::vector<ExternalRef> external_refs;
 
     // 项目元数据
     std::string project_root;

@@ -263,9 +263,42 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
         obj["fan_in"] = s.fan_in;
         obj["fan_out"] = s.fan_out;
         obj["complexity"] = s.complexity;
+
+        // 补充函数签名信息（从 ctx.functions 查找）
+        auto fit = std::find_if(ctx.functions.begin(), ctx.functions.end(),
+                                [id = s.symbol_id](const FunctionSymbol& f) {
+                                    return f.symbol_id == id;
+                                });
+        if (fit != ctx.functions.end()) {
+            obj["return_type"] = fit->return_type;
+            obj["is_virtual"] = fit->is_virtual;
+            obj["is_static"] = fit->is_static;
+            obj["is_inline"] = fit->is_inline;
+            json params = json::array();
+            for (const auto& p : fit->parameters) params.push_back(p);
+            obj["parameters"] = params;
+        }
         sym_array.push_back(obj);
     }
     root["symbols"] = sym_array;
+
+    // 复合类型数据（含字段信息）
+    json comp_array = json::array();
+    for (const auto& csym : ctx.composites) {
+        json cobj;
+        cobj["symbol_id"] = csym.symbol_id;
+        json fields = json::array();
+        for (const auto& f : csym.fields) {
+            fields.push_back({
+                {"name", f.name},
+                {"type", f.type},
+                {"access", static_cast<int>(f.access)}
+            });
+        }
+        cobj["fields"] = fields;
+        comp_array.push_back(cobj);
+    }
+    root["composites"] = comp_array;
 
     // 调用图
     root["call_graph"] = convert_call_graph(ctx.call_edges, ctx.symbols);
@@ -281,6 +314,17 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
 
     // 异常检测
     root["anomalies"] = build_anomalies(stats);
+
+    // 外部符号引用
+    json ext_array = json::array();
+    for (const auto& ext : ctx.external_refs) {
+        ext_array.push_back({
+            {"caller_name", ext.caller_name},
+            {"callee_name", ext.callee_name},
+            {"library", ext.library}
+        });
+    }
+    root["external_refs"] = ext_array;
 
     // 统计数据（直接给前端使用）
     json stats_json;

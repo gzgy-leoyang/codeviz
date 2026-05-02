@@ -232,6 +232,20 @@ void Indexer::process_calls(const std::vector<FileParseResult>& results, Analysi
                 } else {
                     // 未解析的外部符号，使用特殊 ID
                     callee_id = std::numeric_limits<uint32_t>::max();
+
+                    // 收集外部符号引用，按命名空间前缀推测库名
+                    ExternalRef ext;
+                    ext.caller_name = raw.name;
+                    ext.callee_name = callee_name;
+                    // 根据前缀推测库名
+                    if (callee_name.rfind("std::", 0) == 0) ext.library = "libstdc++";
+                    else if (callee_name.rfind("boost::", 0) == 0) ext.library = "libboost";
+                    else if (callee_name.rfind("pthread_", 0) == 0) ext.library = "libpthread";
+                    else if (callee_name.rfind("gl_", 0) == 0) ext.library = "libGL";
+                    else if (callee_name.rfind("SDL_", 0) == 0) ext.library = "libSDL";
+                    else ext.library = "external";
+                    ctx.external_refs.push_back(ext);
+
                     spdlog::debug("外部符号: {} (调用者: {})", callee_name, raw.name);
                 }
 
