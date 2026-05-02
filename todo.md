@@ -82,8 +82,8 @@
 - **问题**: 无依赖检查/自动安装脚本
 - **涉及文件**: `deploy.sh`
 - **目标**: 检查 python3、clang、libclang-dev、graphviz、npm 等依赖并引导安装
-- **修改内容**: 新建 `deploy.sh`，检查核心构建依赖（cmake/g++/make）+ 可选开发工具链（python3/git/clang/libclang-dev/node/npm）+ 可视化工具（graphviz）；汇总并引导安装缺失的核心依赖；自动调用 build.sh 构建
-- **验证**: 7 项通过（cmake/g++/make/python3/git/node/npm），3 项可选缺失，构建成功
+- **修改内容**: 新建 `deploy.sh`，一次性检测所有依赖（core: cmake/g++/make + opt: python3/git/clang/libclang-dev/node/npm/graphviz），列出全部缺失后统一 y/n 确认安装，不自动构建
+- **验证**: 7 项通过，3 项可选缺失，非交互模式自动跳过安装
 
 ### 11. 测试目录为空
 - **问题**: `Test/` 目录无任何测试代码
