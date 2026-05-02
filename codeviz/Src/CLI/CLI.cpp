@@ -61,16 +61,16 @@ codeviz - C/C++ 源码可视化分析工具
        ->default_val(2);
 
     app.add_option("-o,--output", args.output_path,
-                   "输出的 HTML 报告文件路径")
-       ->default_val("report.html");
+                   "输出的 HTML 报告文件路径（默认: <project_path>.html）");
 
     app.add_flag("-v,--verbose", args.verbose,
                  "启用详细日志输出（用于调试）");
 
     app.footer(R"(
 示例:
-  codeviz -p ./my_project
-  codeviz -p ./my_project -e main -d 3 -o report.html
+  codeviz -p ./my_project              # 输出到 ./my_project.html
+  codeviz -p ./my_project -o /tmp/r.html
+  codeviz -p ./my_project -e main -d 3
   codeviz -p ./my_project -v)");
 
     try { app.parse(argc, argv); }
@@ -171,6 +171,14 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         std::cerr << "[ERROR] 参数解析失败: " << e.what() << std::endl;
         return 1;
+    }
+
+    // 若未指定输出路径，默认输出到项目目录同级的 .html 文件
+    if (args.output_path.empty()) {
+        args.output_path = args.project_path;
+        // 去除末尾的 /
+        if (args.output_path.back() == '/') args.output_path.pop_back();
+        args.output_path += ".html";
     }
 
     // 重新初始化日志（应用 verbose 设置）
