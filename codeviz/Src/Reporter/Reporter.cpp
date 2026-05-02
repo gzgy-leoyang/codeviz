@@ -28,14 +28,22 @@ static const char* HTML_TEMPLATE = R"HTML(
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #eee; }
-        #header { background: #16213e; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #0f3460; }
+        #header { background: #16213e; padding: 12px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; border-bottom: 1px solid #0f3460; }
         #header h1 { font-size: 20px; color: #e94560; }
+        #header .meta { font-size: 12px; color: #aaa; }
+        #header #cmd-line { font-size: 11px; color: #666; }
         #tabs { background: #16213e; padding: 0 24px; display: flex; border-bottom: 1px solid #0f3460; }
         .tab { padding: 12px 20px; cursor: pointer; color: #aaa; border-bottom: 2px solid transparent; font-size: 14px; }
         .tab.active { color: #e94560; border-bottom-color: #e94560; }
         #main { display: flex; height: calc(100vh - 102px); }
-        #sidebar { width: 280px; background: #16213e; border-right: 1px solid #0f3460; overflow-y: auto; padding: 12px; flex-shrink: 0; }
+        #sidebar { width: 280px; background: #16213e; border-right: 1px solid #0f3460; overflow-y: auto; padding: 12px; flex-shrink: 0; transition: width 0.2s; }
+        #sidebar.collapsed { width: 36px; overflow: hidden; padding: 12px 6px; min-width: 36px; }
+        #sidebar.collapsed h3, #sidebar.collapsed #search, #sidebar.collapsed #symbol-list { display: none; }
+        #sidebar.collapsed #toggle-sidebar { margin: 0 auto; display: block; }
         #sidebar h3 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+        #sidebar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        #toggle-sidebar { background: none; border: 1px solid #0f3460; color: #888; cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 14px; line-height: 1; }
+        #toggle-sidebar:hover { color: #e94560; border-color: #e94560; }
         #search { width: 100%; background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; }
         #symbol-list { list-style: none; }
         #symbol-list li { padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #ccc; }
@@ -63,7 +71,7 @@ static const char* HTML_TEMPLATE = R"HTML(
     <div id="header">
         <h1>codeviz &nbsp;<span style="color:#aaa;font-size:14px;">源码可视化分析报告</span></h1>
         <div class="meta" id="meta-info">加载中...</div>
-        <div id="cmd-line" style="font-size:11px;color:#888;margin-top:4px;display:none;"></div>
+        <div class="meta" id="cmd-line" style="display:none;"></div>
     </div>
     <div id="tabs">
         <div class="tab active" onclick="switchTab('call')">调用图</div>
@@ -73,7 +81,10 @@ static const char* HTML_TEMPLATE = R"HTML(
     </div>
     <div id="main">
         <div id="sidebar">
-            <h3>符号搜索</h3>
+            <div id="sidebar-header">
+                <h3>符号搜索</h3>
+                <button id="toggle-sidebar" onclick="toggleSidebar()" title="折叠/展开侧边栏">◀</button>
+            </div>
             <input id="search" type="text" placeholder="搜索函数/类/文件..." oninput="filterSymbols(this.value)">
             <ul id="symbol-list"></ul>
         </div>
@@ -157,6 +168,7 @@ var graphData=tab==='call'?data.call_graph:tab==='include'?data.include_graph:da
 if(cy){cy.destroy();cy=null;}
 initCytoscape(buildElements(graphData||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));};
 window.resetLayout=function(){if(cy)cy.layout({name:'cose',padding:20}).run();};
+window.toggleSidebar=function(){var sb=document.getElementById('sidebar');sb.classList.toggle('collapsed');document.getElementById('toggle-sidebar').textContent=sb.classList.contains('collapsed')?'▶':'◀';setTimeout(function(){if(cy)cy.resize();},250);};
 window.fitGraph=function(){if(cy)cy.fit();};
 window.filterSymbols=function(q){document.getElementById('symbol-list').querySelectorAll('li').forEach(function(li){li.style.display=li.textContent.toLowerCase().includes(q.toLowerCase())?'':'none';});};
 function renderSidebar(){var list=document.getElementById('symbol-list');list.innerHTML='';(data.symbols||[]).forEach(function(s){var li=document.createElement('li');li.textContent=s.name;li.title=s.qualified_name;li.onclick=function(){if(cy){var node=cy.getElementById(String(s.symbol_id));if(node.length){cy.animate({fit:{eles:node,padding:60},duration:400});node.select();}}};list.appendChild(li);});}
