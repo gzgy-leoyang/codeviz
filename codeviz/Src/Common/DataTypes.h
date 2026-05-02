@@ -162,6 +162,9 @@ struct FileParseResult {
     std::string file_path;
     std::vector<RawSymbol> symbols;
     std::vector<std::pair<std::string, std::string>> includes; // (includer, includee)
+    int total_lines = 0;      // 文件总行数
+    int code_lines = 0;       // 有效代码行数
+    int comment_lines = 0;    // 注释行数
 };
 
 // 5. 符号索引模块到图构建模块

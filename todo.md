@@ -32,10 +32,11 @@
 - **涉及文件**: `Src/Template/template.html`, `Src/Template/cytoscape_bridge.js`, `Src/Reporter/Reporter.cpp`
 - **目标**: 集成 ECharts 作为补充图表（或从文档中移除该选型）
 
-### 5. GraphBuilder::build_include_graph 为空桩
+### 5. ~~GraphBuilder::build_include_graph 为空桩~~ ✅ 已修复
 - **问题**: 函数声明存在但无实际操作
 - **涉及文件**: `Src/GraphBuilder/GraphBuilder.cpp`
-- **目标**: 实现 include graph 构建逻辑（或确认 Indexer 已完成该工作后清理此函数）
+- **修改内容**: IncludeEdges 已由 Indexer 创建，`build_include_graph` 改为验证边有效性 + 统计被包含次数 + 识别热点头文件
+- **验证**: 16/16 条边有效，热点头文件 ID 27 被包含 3 次
 
 ---
 

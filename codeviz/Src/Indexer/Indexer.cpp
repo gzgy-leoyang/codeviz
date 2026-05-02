@@ -50,6 +50,13 @@ AnalysisContext Indexer::build_index(const std::vector<FileParseResult>& parse_r
 
         ctx.files.push_back(file_sym);
         ctx.source_files.push_back(file_result.file_path);
+
+        // 回填行数统计
+        if (!ctx.files.empty()) {
+            ctx.files.back().total_lines = file_result.total_lines;
+            ctx.files.back().code_lines = file_result.code_lines;
+            ctx.files.back().comment_lines = file_result.comment_lines;
+        }
     }
 
     // 第二遍：解析调用关系和包含关系

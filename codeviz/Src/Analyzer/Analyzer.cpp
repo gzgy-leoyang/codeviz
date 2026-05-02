@@ -184,21 +184,6 @@ void Analyzer::tarjan_dfs(
 void Analyzer::compute_hotspots(AnalysisStats& stats) {
     spdlog::debug("计算热力值");
 
-    // 文件热力：按代码行数归一化
-    if (!stats.file_stats.empty()) {
-        double max_lines = 0;
-        for (const auto& f : stats.file_stats) {
-            max_lines = std::max(max_lines, static_cast<double>(f.code_lines));
-        }
-        // 热力值存储在 complexity_sum 归一化中（0-1 范围）
-        if (max_lines > 0) {
-            for (auto& f : stats.file_stats) {
-                // 归一化热力 = code_lines / max_lines
-                // 可在此添加 hotspot 字段；当前简化存于 complexity_sum 的比率
-            }
-        }
-    }
-
     // 函数热力：按被调用次数排序
     std::sort(stats.function_stats.begin(), stats.function_stats.end(),
               [](const FunctionStats& a, const FunctionStats& b) {

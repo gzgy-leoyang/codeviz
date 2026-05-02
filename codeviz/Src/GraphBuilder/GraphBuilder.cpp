@@ -176,9 +176,53 @@ void GraphBuilder::bfs_traverse(uint32_t start_id, int max_depth, AnalysisContex
 }
 
 void GraphBuilder::build_include_graph(AnalysisContext& ctx) {
-    // include_edges 已由 Indexer::process_includes 填充
-    // 此处补充类型依赖的包含关系
-    spdlog::debug("构建包含图: {} 条包含边", ctx.include_edges.size());
+    size_t edge_count = ctx.include_edges.size();
+    size_t file_count = ctx.files.size();
+    spdlog::debug("构建包含图: {} 个文件, {} 条包含边", file_count, edge_count);
+
+    if (edge_count == 0) return;
+
+    // 建立文件符号 ID → FileSymbol 的快速索引
+    std::unordered_map<uint32_t, size_t> file_id_to_idx;
+    for (size_t i = 0; i < ctx.files.size(); i++) {
+        file_id_to_idx[ctx.files[i].symbol_id] = i;
+    }
+
+    // 验证边 + 统计每个文件被包含的次数
+    std::unordered_map<uint32_t, int> included_by;
+    size_t valid = 0;
+    for (const auto& edge : ctx.include_edges) {
+        bool has_includer = file_id_to_idx.count(edge.includer_id) > 0;
+        bool has_includee = file_id_to_idx.count(edge.includee_id) > 0;
+
+        if (has_includer && has_includee) {
+            valid++;
+            included_by[edge.includee_id]++;
+        } else {
+            if (!has_includer)
+                spdlog::warn("包含边引用无效的 includer_id: {}", edge.includer_id);
+            if (!has_includee)
+                spdlog::warn("包含边引用无效的 includee_id: {}", edge.includee_id);
+        }
+    }
+
+    spdlog::debug("包含图验证: {}/{} 条边有效", valid, edge_count);
+
+    // 找出被包含次数最多的文件（热点头文件）
+    if (!included_by.empty()) {
+        auto max_it = std::max_element(included_by.begin(), included_by.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+        if (max_it != included_by.end() && max_it->second > 1) {
+            // 查找对应的文件路径
+            for (const auto& fs : ctx.files) {
+                if (fs.symbol_id == max_it->first) {
+                    spdlog::debug("热点头文件: {} (被包含 {} 次)",
+                                  fs.symbol_id, max_it->second);
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void GraphBuilder::build_type_dependency_graph(AnalysisContext& ctx) {

@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cstring>
+#include <sstream>
 
 // tree-sitter 语言入口函数声明
 extern "C" {
@@ -31,6 +32,60 @@ static std::string node_text(TSNode node, const std::string& source) {
 /// 在子节点中按 field 名查找
 static TSNode child_by_field(TSNode node, const char* field) {
     return ts_node_child_by_field_name(node, field, (uint32_t)strlen(field));
+}
+
+/// 统计文件行数：总行数、代码行数、注释行数
+static void count_file_lines(const std::string& content,
+                              int& total_lines, int& code_lines, int& comment_lines) {
+    total_lines = code_lines = comment_lines = 0;
+    bool in_block = false;
+    std::istringstream stream(content);
+    std::string line;
+    while (std::getline(stream, line)) {
+        total_lines++;
+        // 去除首尾空白
+        auto trim_left = [](std::string& s) {
+            s.erase(0, s.find_first_not_of(" \t\r"));
+        };
+        trim_left(line);
+        if (line.empty()) continue;
+
+        if (in_block) {
+            comment_lines++;
+            size_t end = line.find("*/");
+            if (end != std::string::npos) {
+                in_block = false;
+                std::string after = line.substr(end + 2);
+                trim_left(after);
+                if (!after.empty() && after.find("//") != 0 && after.find('#') != 0) {
+                    code_lines++; // */ 后还有代码
+                }
+            }
+            continue;
+        }
+
+        if (line.find("/*") == 0) {
+            comment_lines++;
+            size_t end = line.find("*/", 2);
+            if (end != std::string::npos) {
+                std::string after = line.substr(end + 2);
+                trim_left(after);
+                if (!after.empty() && after.find("//") != 0 && after.find('#') != 0) {
+                    code_lines++;
+                }
+            } else {
+                in_block = true;
+            }
+            continue;
+        }
+
+        if (line.find("//") == 0 || line.find('#') == 0) {
+            comment_lines++;
+            continue;
+        }
+
+        code_lines++;
+    }
 }
 
 /// 提取 #include 路径（去掉引号或尖括号）
@@ -114,8 +169,12 @@ FileParseResult ParserFrontend::parse_file(const SourceFile& source,
     ts_tree_delete(tree);
     ts_parser_delete(parser);
 
-    spdlog::info("解析完成: {} 个符号, {} 个包含关系",
-                 result.symbols.size(), result.includes.size());
+    // 统计行数
+    count_file_lines(content, result.total_lines, result.code_lines, result.comment_lines);
+
+    spdlog::info("解析完成: {} 个符号, {} 个包含关系 ({} 行, {} 代码行)",
+                 result.symbols.size(), result.includes.size(),
+                 result.total_lines, result.code_lines);
     return result;
 }
 
