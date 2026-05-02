@@ -284,6 +284,10 @@ int main(int argc, char* argv[]) {
         ctx.c_compiler = build_meta.c_compiler;
         ctx.cxx_compiler = build_meta.cxx_compiler;
         ctx.compile_params = compile_db;
+        ctx.command_line = "codeviz -p " + args.project_path
+                         + " -e " + args.entry_function
+                         + " -d " + std::to_string(args.expand_depth)
+                         + " -o " + args.output_path;
     } catch (const std::exception& e) {
         spdlog::error("符号索引构建失败: {}", e.what());
         return 1;

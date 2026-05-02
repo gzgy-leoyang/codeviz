@@ -63,6 +63,7 @@ static const char* HTML_TEMPLATE = R"HTML(
     <div id="header">
         <h1>codeviz &nbsp;<span style="color:#aaa;font-size:14px;">源码可视化分析报告</span></h1>
         <div class="meta" id="meta-info">加载中...</div>
+        <div id="cmd-line" style="font-size:11px;color:#888;margin-top:4px;display:none;"></div>
     </div>
     <div id="tabs">
         <div class="tab active" onclick="switchTab('call')">调用图</div>
@@ -175,7 +176,7 @@ var anoList=document.getElementById('ano-list');var ano=data.anomalies||{};
 if(!(ano.circular_includes||[]).length){anoList.innerHTML='<p style="color:#4ade80;font-size:13px;">未检测到循环包含</p>';}
 else{(ano.circular_includes||[]).forEach(function(ci){var d=document.createElement('div');d.className='anomaly';d.textContent='循环包含: '+ci.file_cycle.join(' → ');anoList.appendChild(d);});}
 }
-function updateMeta(){var meta=data.metadata||{};document.getElementById('meta-info').textContent='项目: '+(meta.project_name||'-')+' | 生成时间: '+(meta.generated_at||'-');}
+function updateMeta(){var meta=data.metadata||{};document.getElementById('meta-info').textContent='项目: '+(meta.project_name||'-')+' | 生成时间: '+(meta.generated_at||'-');var cl=document.getElementById('cmd-line');if(cl&&meta.command_line){cl.textContent='运行命令: '+meta.command_line;cl.style.display='block';}}
 document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSidebar();initCytoscape(buildElements(data.call_graph||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));});
 })();
 )BRIDGE";
@@ -243,6 +244,7 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
         {"function_count", func_count},
         {"c_compiler", ctx.c_compiler},
         {"cxx_compiler", ctx.cxx_compiler},
+        {"command_line", ctx.command_line.empty() ? "" : ctx.command_line},
         {"generated_at", time_buf}
     };
 

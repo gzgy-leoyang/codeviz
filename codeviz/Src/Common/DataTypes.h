@@ -287,6 +287,9 @@ struct AnalysisContext {
     std::vector<TypeDependencyEdge> type_edges;
     std::vector<SymbolRef> references;
 
+    // 命令行参数（用于报告展示）
+    std::string command_line;
+
     // 外部符号引用
     std::vector<ExternalRef> external_refs;
 
