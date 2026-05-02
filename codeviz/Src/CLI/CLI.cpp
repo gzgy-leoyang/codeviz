@@ -243,6 +243,36 @@ int main(int argc, char* argv[]) {
             try {
                 CompDBParser compdb_parser;
                 compile_db = compdb_parser.parse(bd);
+
+                // 若 CMakeLists.txt 未显式指定编译器，从 compile_commands.json 推断
+                if (build_meta.c_compiler.empty() || build_meta.cxx_compiler.empty()) {
+                    std::ifstream ifs(bd + "/compile_commands.json");
+                    nlohmann::json j;
+                    ifs >> j;
+                    if (j.is_array() && !j.empty()) {
+                        std::string cmd = j[0].value("command", "");
+                        if (!cmd.empty()) {
+                            // 提取编译器路径（command 字段的第一个单词）
+                            auto pos = cmd.find_first_not_of(" \t");
+                            if (pos != std::string::npos) {
+                                cmd = cmd.substr(pos);
+                                std::string compiler = cmd.substr(0, cmd.find_first_of(" \t"));
+                                // 通过基础文件名判断是 C 还是 C++ 编译器
+                                std::string base = fs::path(compiler).filename().string();
+                                bool is_cxx = (base.find("++") != std::string::npos ||
+                                              base.find("clang") != std::string::npos ||
+                                              base.find("gcc") == std::string::npos);
+                                if (is_cxx && build_meta.cxx_compiler.empty())
+                                    build_meta.cxx_compiler = compiler;
+                                else if (!is_cxx && build_meta.c_compiler.empty())
+                                    build_meta.c_compiler = compiler;
+                                // 若只有一个编译器，同时赋值
+                                if (build_meta.c_compiler.empty() && !build_meta.cxx_compiler.empty())
+                                    build_meta.c_compiler = build_meta.cxx_compiler;
+                            }
+                        }
+                    }
+                }
             } catch (const std::exception& e) {
                 spdlog::warn("编译数据库解析失败: {}", e.what());
             }
