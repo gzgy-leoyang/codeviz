@@ -96,13 +96,13 @@ static const char* HTML_TEMPLATE = R"HTML(
     </div>
     <script>
     // Cytoscape.js 内嵌（由 Reporter 填充真实库内容）
-    // CYTOSCAPE_PLACEHOLDER
+    {{ cytoscape_js }}
     </script>
     <script>
-    window.CODEVIZ_DATA = CODEVIZ_DATA_PLACEHOLDER;
+    window.CODEVIZ_DATA = {{ data_json }};
     </script>
     <script>
-    // BRIDGE_JS_PLACEHOLDER
+    {{ bridge_js }}
     </script>
 </body>
 </html>
@@ -187,34 +187,25 @@ HTMLReport Reporter::generate(const std::vector<SymbolMetadata>& symbols,
 
     // 2. 构建 JSON 数据
     json data = build_json(symbols, stats, ctx);
+    std::string json_str = data.dump(2);
 
-    // 3. 将 JSON 数据注入到模板占位符
-    std::string json_str = data.dump();
-
-    // 注入数据：替换 CODEVIZ_DATA_PLACEHOLDER
-    auto replace_all = [](std::string& str, const std::string& from, const std::string& to) {
-        size_t pos = 0;
-        while ((pos = str.find(from, pos)) != std::string::npos) {
-            str.replace(pos, from.length(), to);
-            pos += to.length();
-        }
-    };
-
-    replace_all(tmpl, "CODEVIZ_DATA_PLACEHOLDER", json_str);
-
-    // 注入桥接 JS
-    replace_all(tmpl, "// BRIDGE_JS_PLACEHOLDER", BRIDGE_JS);
-
-    // 注入 Cytoscape.js：将内嵌的字节数组转为 <script> 标签内嵌
+    // 3. 准备 Cytoscape.js 代码
     std::string cytoscape_js_code(
         reinterpret_cast<const char*>(cytoscape_min_js),
         cytoscape_min_js_len);
-    replace_all(tmpl, "// CYTOSCAPE_PLACEHOLDER", cytoscape_js_code);
 
-    spdlog::info("HTML 报告生成完成，大小: {} 字节", tmpl.size());
+    // 4. 使用 Inja 模板引擎渲染
+    inja::Environment env;
+    std::string result = env.render(tmpl, {
+        {"cytoscape_js", cytoscape_js_code},
+        {"data_json", json_str},
+        {"bridge_js", BRIDGE_JS}
+    });
+
+    spdlog::info("HTML 报告生成完成，大小: {} 字节", result.size());
 
     HTMLReport report;
-    report.content = std::move(tmpl);
+    report.content = std::move(result);
     report.output_path = "report.html";
     return report;
 }

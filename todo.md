@@ -18,10 +18,14 @@
   - 实现: 将 `handle_function_def`→`visit_function_definition`、`handle_call_expr`→`visit_call_expression`、`handle_struct`→`visit_struct_specifier`、`handle_class`→`visit_class_specifier`、`handle_macro`→`visit_preproc_def`、`handle_include`→`visit_preproc_include`、`traverse`→`traverse_cst`；`visit_function_declarator` 和 `visit_field_declaration` 保留桩（对应 #7、#9）；移除所有空桩实现（341-377 行）
 - **验证**: 编译无警告；test_project 全流程正常，符号数/调用边完全一致
 
-### 3. Reporter 使用字符串替换而非 Inja 模板引擎
+### 3. ~~Reporter 使用字符串替换而非 Inja 模板引擎~~ ✅ 已修复
 - **问题**: 手动 `std::string::find+replace` 替代了 Inja 模板渲染
 - **涉及文件**: `Src/Reporter/Reporter.cpp`
-- **目标**: 改用 Inja 模板引擎渲染 HTML
+- **修改内容**:
+  - 模板占位符 `CODEVIZ_DATA_PLACEHOLDER`→`{{{ data_json }}}`、`// CYTOSCAPE_PLACEHOLDER`→`{{{ cytoscape_js }}}`、`// BRIDGE_JS_PLACEHOLDER`→`{{{ bridge_js }}}`
+  - `generate()`: 移除 `replace_all` lambda 和三处手动替换，改用 `inja::Environment::render()` 传递三个模板变量
+  - 数据使用 `data.dump(2)` 格式化输出便于调试
+- **验证**: 编译无警告；test_project 全流程正常，HTML 中 `project_name` 正确渲染，所有 Inja 标签被替换（`{{{ }}}` 零残留）
 
 ### 4. ECharts 未集成
 - **问题**: 技术选型指定 ECharts 为补充图表库，但未实现
