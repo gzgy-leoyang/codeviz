@@ -2,19 +2,22 @@
 #include "handler/http_handler.h"
 #include <iostream>
 
-// 实现基类纯虚函数 - 派生类具体行为
+/// @brief 处理 HTTP 请求
+/// 实现基类纯虚函数，调用基类 name() 方法
 void HttpHandler::handle() {
     // 调用基类方法 name()，形成派生类→基类的方法调用关系
     std::cout << "Handling request for handler: " << name() << std::endl;
     std::cout << "URL: " << url_ << std::endl;
 }
 
-// 覆盖基类虚函数 - 返回派生类名称
+/// @brief 获取处理器名称
+/// @return "HttpHandler"
 std::string HttpHandler::name() {
     return "HttpHandler";
 }
 
-// 派生类新增方法 - 设置请求 URL
+/// @brief 设置请求 URL
+/// @param url 目标 URL 地址
 void HttpHandler::set_url(const std::string& url) {
     url_ = url;
 }

@@ -5,22 +5,25 @@
 #include "handler/base_handler.h"
 #include <string>
 
-// HttpHandler 继承 BaseHandler - 验证继承关系提取
+/// @brief HTTP 请求处理器
+/// 继承自 BaseHandler，验证类继承关系和派生类方法提取
 class HttpHandler : public BaseHandler {
 public:
     HttpHandler() = default;
 
-    // 实现基类纯虚函数
+    /// @brief 实现基类纯虚函数，处理 HTTP 请求
     void handle() override;
 
-    // 覆盖基类虚函数
+    /// @brief 覆盖基类虚函数，返回派生类名称
+    /// @return "HttpHandler"
     std::string name() override;
 
-    // 派生类新增成员函数
+    /// @brief 设置请求 URL（派生类新增方法）
+    /// @param url 目标 URL
     void set_url(const std::string& url);
 
 private:
-    std::string url_;
+    std::string url_;  ///< 请求 URL
 };
 
 #endif // HTTP_HANDLER_H

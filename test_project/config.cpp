@@ -1,7 +1,9 @@
 // config.cpp - 配置读取实现，验证多层函数调用关系
 #include "config.h"
 
-// 解析服务器信息 - 被 load_config() 调用，形成第3级调用链
+/// @brief 解析服务器连接信息
+/// 被 load_config() 调用，形成第 3 级调用链
+/// @return 填充了默认值的 ServerInfo 结构体
 ServerInfo parse_server_info() {
     ServerInfo info;
     info.ip = "127.0.0.1";
@@ -9,7 +11,9 @@ ServerInfo parse_server_info() {
     return info;
 }
 
-// 解析日志信息 - 被 load_config() 调用，形成第3级调用链
+/// @brief 解析日志配置信息
+/// 被 load_config() 调用，形成第 3 级调用链
+/// @return 填充了默认值的 LogInfo 结构体
 LogInfo parse_log_info() {
     LogInfo info;
     info.path = "/var/log/test.log";
@@ -17,7 +21,9 @@ LogInfo parse_log_info() {
     return info;
 }
 
-// 加载配置 - 被 init_app() 调用，内部再调用 parse_server_info() 和 parse_log_info()
+/// @brief 加载应用配置
+/// 内部调用 parse_server_info() 和 parse_log_info()
+/// @return 完整的应用配置结构体
 Config load_config() {
     Config cfg;
     cfg.server = parse_server_info();

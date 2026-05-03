@@ -5,6 +5,9 @@
 #include "common/types.h"
 #include <iostream>
 
+/// @brief 程序入口
+/// 验证完整调用链：main() -> init_app() -> load_config()/setup_logger() -> parse_*()
+/// @return 0 表示正常退出
 int main() {
     // 调用 init_app()，触发整个调用链
     init_app();

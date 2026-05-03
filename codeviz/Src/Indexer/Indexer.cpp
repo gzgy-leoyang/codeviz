@@ -171,6 +171,7 @@ FunctionSymbol Indexer::extract_function_detail(const RawSymbol& raw, uint32_t s
     fsym.symbol_id = symbol_id;
     fsym.return_type = raw.return_type;
     fsym.parameters = raw.parameters;
+    fsym.comment = raw.comment;
     fsym.is_virtual = raw.is_virtual;
     fsym.is_static = raw.is_static;
     fsym.is_inline = raw.is_inline;
@@ -183,6 +184,7 @@ CompositeSymbol Indexer::extract_composite_detail(const RawSymbol& raw, uint32_t
     CompositeSymbol csym;
     csym.symbol_id = symbol_id;
     csym.fields = raw.fields;
+    csym.comment = raw.comment;
     // 暂存基类名称字符串，在第二遍解析为 Symbol ID
     unresolved_base_classes_[symbol_id] = raw.base_class_names;
     return csym;

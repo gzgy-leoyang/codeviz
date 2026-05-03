@@ -75,7 +75,8 @@
                     fan_in: fstat.fan_in || 0,
                     fan_out: fstat.fan_out || 0,
                     complexity: fstat.cyclomatic_complexity || 0,
-                    heat: heatVal
+                    heat: heatVal,
+                    comment: sym.comment || ''
                 }
             });
         });
@@ -168,6 +169,9 @@
                 document.getElementById('ni-fanin').textContent = d.fan_in;
                 document.getElementById('ni-fanout').textContent = d.fan_out;
                 document.getElementById('ni-cc').textContent = d.complexity;
+                const nc = document.getElementById('ni-comment');
+                if (d.comment) { nc.textContent = d.comment; nc.style.display = 'block'; }
+                else { nc.style.display = 'none'; }
             });
 
             // 背景点击：隐藏节点详情

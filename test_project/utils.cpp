@@ -3,13 +3,17 @@
 #include "logger.h"
 #include <iostream>
 
-// 打印配置信息 - 展示嵌套结构体的访问
+/// @brief 打印应用配置
+/// 展示嵌套结构体的字段访问
+/// @param cfg 应用配置结构体
 void print_config(const Config& cfg) {
     std::cout << "Server: " << cfg.server.ip << ":" << cfg.server.port << std::endl;
     std::cout << "Log: " << cfg.log.path << " level=" << cfg.log.level << std::endl;
 }
 
-// 应用初始化 - 被 main() 调用，内部调用 load_config() 和 setup_logger()，形成调用链
+/// @brief 应用初始化入口
+/// 被 main() 调用，内部调用 load_config() 和 setup_logger()
+/// 形成调用链: main -> init_app -> load_config/setup_logger
 void init_app() {
     std::cout << "Initializing app..." << std::endl;
 

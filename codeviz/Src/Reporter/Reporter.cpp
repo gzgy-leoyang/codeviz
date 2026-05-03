@@ -35,17 +35,16 @@ static const char* HTML_TEMPLATE = R"HTML(
         #tabs { background: #16213e; padding: 0 24px; display: flex; border-bottom: 1px solid #0f3460; }
         .tab { padding: 12px 20px; cursor: pointer; color: #aaa; border-bottom: 2px solid transparent; font-size: 14px; }
         .tab.active { color: #e94560; border-bottom-color: #e94560; }
-        #main { display: flex; height: calc(100vh - 102px); }
-        #sidebar { width: 280px; background: #16213e; border-right: 1px solid #0f3460; overflow-y: auto; padding: 12px; flex-shrink: 0; transition: width 0.2s; }
-        #sidebar.collapsed { width: 36px; overflow: hidden; padding: 12px 6px; min-width: 36px; }
+        #main { display: flex; height: calc(100vh - 102px); position: relative; }
+        #sidebar { flex: none; width: 280px; background: #16213e; border-left: 1px solid #0f3460; overflow: hidden; padding: 12px; transition: width 0.2s; }
+        #sidebar.collapsed { width: 44px; overflow: hidden; padding: 10px 2px; }
         #sidebar.collapsed h3, #sidebar.collapsed #search, #sidebar.collapsed #symbol-list { display: none; }
-        #sidebar.collapsed #toggle-sidebar { margin: 0 auto; display: block; }
-        #sidebar h3 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
-        #sidebar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        #toggle-sidebar { background: none; border: 1px solid #0f3460; color: #888; cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 14px; line-height: 1; }
+        #toggle-sidebar { position: absolute; top: 12px; right: 8px; background: #16213e; border: 1px solid #0f3460; color: #888; cursor: pointer; padding: 6px 10px; border-radius: 4px; font-size: 14px; line-height: 1; z-index: 20; }
         #toggle-sidebar:hover { color: #e94560; border-color: #e94560; }
+        #sidebar h3 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+        #sidebar-header { display: flex; align-items: center; margin-bottom: 8px; }
         #search { width: 100%; background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; }
-        #symbol-list { list-style: none; }
+        #symbol-list { list-style: none; max-height: calc(100vh - 200px); overflow-y: auto; }
         #symbol-list li { padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #ccc; }
         #symbol-list li:hover { background: #0f3460; color: #e94560; }
         #canvas-container { flex: 1; position: relative; }
@@ -58,11 +57,11 @@ static const char* HTML_TEMPLATE = R"HTML(
         td { padding: 8px; border-bottom: 1px solid #0f3460; }
         .hotbar { height: 8px; border-radius: 4px; display: inline-block; min-width: 4px; }
         .anomaly { background: #e94560; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin: 4px 0; }
-        #node-info { position: absolute; bottom: 16px; right: 16px; background: #16213e; border: 1px solid #D5EE2E; border-radius: 8px; padding: 12px; max-width: 300px; display: none; font-size: 13px; z-index: 10; }
+        #node-info { position: absolute; top: 56px; left: 16px; background: #16213e; border: 1px solid #D5EE2E; border-radius: 8px; padding: 12px; max-width: 360px; display: none; font-size: 13px; z-index: 10; }
         #node-info h4 { color: #e94560; margin-bottom: 8px; }
         #node-info .kv { display: flex; justify-content: space-between; margin-bottom: 4px; }
         #node-info .kv .k { color: #aaa; }
-        #controls { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 10; }
+        #controls { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 8px; z-index: 10; }
         .btn { background: #0f3460; color: #eee; border: 1px solid #e94560; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; }
         .btn:hover { background: #e94560; }
     </style>
@@ -80,15 +79,8 @@ static const char* HTML_TEMPLATE = R"HTML(
         <div class="tab" onclick="switchTab('stats')">统计分析</div>
     </div>
     <div id="main">
-        <div id="sidebar">
-            <div id="sidebar-header">
-                <h3>符号搜索</h3>
-                <button id="toggle-sidebar" onclick="toggleSidebar()" title="折叠/展开侧边栏">◀</button>
-            </div>
-            <input id="search" type="text" placeholder="搜索函数/类/文件..." oninput="filterSymbols(this.value)">
-            <ul id="symbol-list"></ul>
-        </div>
         <div id="canvas-container">
+            <button id="toggle-sidebar" onclick="toggleSidebar()" title="折叠/展开侧边栏">▶</button>
             <div id="controls">
                 <button class="btn" onclick="resetLayout()">重置布局</button>
                 <button class="btn" onclick="fitGraph()">适应窗口</button>
@@ -103,7 +95,15 @@ static const char* HTML_TEMPLATE = R"HTML(
                 <div class="kv"><span class="k">被调用</span><span id="ni-fanin">-</span></div>
                 <div class="kv"><span class="k">调用</span><span id="ni-fanout">-</span></div>
                 <div class="kv"><span class="k">圈复杂度</span><span id="ni-cc">-</span></div>
+                <div id="ni-comment" style="margin-top:8px;padding:6px;background:#0f3460;border-radius:4px;font-size:11px;color:#ccc;display:none;white-space:pre-wrap;max-height:120px;overflow-y:auto;"></div>
             </div>
+        </div>
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <h3>符号搜索</h3>
+            </div>
+            <input id="search" type="text" placeholder="搜索函数/类/文件..." oninput="filterSymbols(this.value)">
+            <ul id="symbol-list"></ul>
         </div>
         <div id="stats-panel"></div>
     </div>
@@ -142,7 +142,7 @@ var heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
 var kind=sym.kind||n.type||'FUNCTION';
 var label=n.label||sym.name||String(n.id);
 if(kind!=='FILE_ENTITY'){var fname=(sym.file_path||'').split('/').pop();if(fname)label+='\n('+fname+')';}
-elements.push({group:'nodes',data:{id:String(n.id),label:label,kind:kind,shape:nodeShape(kind),file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal}});
+elements.push({group:'nodes',data:{id:String(n.id),label:label,kind:kind,shape:nodeShape(kind),file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||''}});
 });
 (graphData.edges||[]).forEach(function(e,idx){elements.push({group:'edges',data:{id:'e'+idx,source:String(e.source_id),target:String(e.target_id),relation:e.relation||'CALLS',weight:e.weight||1}});});
 return elements;}
@@ -159,7 +159,7 @@ style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':isLa
 layout:{name:'cose',padding:20}};
 if(isLarge){opts.hideEdgesOnViewport=true;opts.motionBlur=true;opts.textEvents='no';opts.wheelSensitivity=0.5;}
 cy=cytoscape(opts);
-cy.on('tap','node',function(evt){var d=evt.target.data();document.getElementById('node-info').style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;});
+cy.on('tap','node',function(evt){var d=evt.target.data();document.getElementById('node-info').style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;var nc=document.getElementById('ni-comment');if(d.comment){nc.textContent=d.comment;nc.style.display='block';}else{nc.style.display='none';}});
 cy.on('tap',function(evt){if(evt.target===cy)document.getElementById('node-info').style.display='none';});
 }catch(e){console.error('Cytoscape init failed:',e);}}
 window.switchTab=function(tab){
@@ -171,7 +171,7 @@ var graphData=tab==='call'?data.call_graph:tab==='include'?data.include_graph:da
 if(cy){cy.destroy();cy=null;}
 initCytoscape(buildElements(graphData||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));};
 window.resetLayout=function(){if(cy)cy.layout({name:'cose',padding:20}).run();};
-window.toggleSidebar=function(){var sb=document.getElementById('sidebar');sb.classList.toggle('collapsed');document.getElementById('toggle-sidebar').textContent=sb.classList.contains('collapsed')?'▶':'◀';setTimeout(function(){if(cy)cy.resize();},250);};
+window.toggleSidebar=function(){var sb=document.getElementById('sidebar');sb.classList.toggle('collapsed');document.getElementById('toggle-sidebar').textContent=sb.classList.contains('collapsed')?'◀':'▶';setTimeout(function(){if(cy)cy.resize();},250);};
 window.fitGraph=function(){if(cy)cy.fit();};
 window.filterSymbols=function(q){document.getElementById('symbol-list').querySelectorAll('li').forEach(function(li){li.style.display=li.textContent.toLowerCase().includes(q.toLowerCase())?'':'none';});};
 function renderSidebar(){var list=document.getElementById('symbol-list');list.innerHTML='';(data.symbols||[]).forEach(function(s){var li=document.createElement('li');li.textContent=s.name;li.title=s.qualified_name;li.onclick=function(){if(cy){var node=cy.getElementById(String(s.symbol_id));if(node.length){cy.animate({fit:{eles:node,padding:60},duration:400});node.select();}}};list.appendChild(li);});}
@@ -300,7 +300,20 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
             json params = json::array();
             for (const auto& p : fit->parameters) params.push_back(p);
             obj["parameters"] = params;
+            obj["comment"] = fit->comment;
         }
+
+        // 补充复合类型注释（从 ctx.composites 查找）
+        if (s.kind == SymbolKind::STRUCT || s.kind == SymbolKind::CLASS) {
+            auto cit = std::find_if(ctx.composites.begin(), ctx.composites.end(),
+                                    [id = s.symbol_id](const CompositeSymbol& c) {
+                                        return c.symbol_id == id;
+                                    });
+            if (cit != ctx.composites.end() && !cit->comment.empty()) {
+                obj["comment"] = cit->comment;
+            }
+        }
+
         sym_array.push_back(obj);
     }
     root["symbols"] = sym_array;
@@ -319,6 +332,7 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
             });
         }
         cobj["fields"] = fields;
+        cobj["comment"] = csym.comment;
         comp_array.push_back(cobj);
     }
     root["composites"] = comp_array;

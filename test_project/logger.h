@@ -17,10 +17,15 @@
 #define LOG_INFO(msg) log_message("INFO", msg)
 #define LOG_ERROR(msg) log_message("ERROR", msg)
 
-// 日志初始化函数 - 被 init_app() 调用
+/// @brief 初始化日志系统
+/// 被 init_app() 调用
+/// @param path 日志文件路径
+/// @param level 日志级别
 void setup_logger(const std::string& path, int level);
 
-// 日志输出函数
+/// @brief 输出日志消息
+/// @param level 日志级别字符串（INFO/DEBUG/ERROR）
+/// @param msg 日志内容
 void log_message(const std::string& level, const std::string& msg);
 
 #endif // LOGGER_H

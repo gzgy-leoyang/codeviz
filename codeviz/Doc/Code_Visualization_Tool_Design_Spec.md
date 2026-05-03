@@ -711,6 +711,7 @@ struct FunctionSymbol {
     uint32_t symbol_id;             // 关联到 Symbol::id
     std::string return_type;        // 返回值类型字符串
     std::vector<std::string> parameters; // 参数类型列表
+    std::string comment;            // Doxygen 注释文档（ParserFrontend 提取）
     bool is_virtual;                // 虚函数标记
     bool is_static;                 // 静态函数标记
     bool is_inline;                 // 内联函数标记
@@ -736,6 +737,7 @@ struct CompositeSymbol {
     std::vector<FieldInfo> fields;  // 成员字段列表
     std::vector<uint32_t> methods;  // 成员函数 Symbol ID 列表
     std::vector<uint32_t> base_classes; // 基类 Symbol ID 列表
+    std::string comment;            // Doxygen 注释文档（ParserFrontend 提取）
     bool is_pod;                    // 是否为平凡类型
     size_t total_size;              // 类型总大小（字节）
 };
@@ -1053,13 +1055,16 @@ public:
 | is_cpp_ | bool | 标记当前解析语言是否为 C++ |
 | current_access_ | AccessSpecifier | 当前类体内的访问修饰符（public/protected/private）|
 | current_composite_ | RawSymbol* | 当前正在遍历的结构体/类符号（字段收集目标）|
+| last_comment_ | std::string | 最近一个 Doxygen comment 节点内容 |
+| last_comment_line_ | uint32_t | 最近一个 Doxygen comment 的结束行号 |
 
 ##### 主流程步骤
 
-1. 根据源文件扩展名选择对应的 tree-sitter 语言（.c → C，.cpp/.hpp → C++），初始化解析器。
+1. 根据源文件扩展名选择对应的 tree-sitter 语言（.c → C，.cpp/.hpp → C++），初始化解析器，重置 last_comment_。
 2. 调用 ts_parser_parse_string 解析 SourceFile::content，获取 CST 根节点。
 3. 从根节点开始深度优先遍历 CST，维护作用域栈和当前函数指针：
-   - function_definition → visit_function_definition：创建 RawSymbol(kind=FUNC)，提取返回类型、参数、virtual/static/inline 标记；以当前函数指针遍历函数体内 CST。
+   - comment → 仅提取 Doxygen 格式注释（`///` 或 `/**`），累积连续多行到 last_comment_。
+   - function_definition → visit_function_definition：创建 RawSymbol(kind=FUNC)，关联前导 Doxygen 注释；提取返回类型、参数、virtual/static/inline 标记；进入函数体前清除 last_comment_ 防止体内注释泄漏。
    - call_expression → visit_call_expression：提取被调用者名称，追加到 current_func->callee_names。
    - if/for/while/do/switch/case/conditional_expression → current_func->branch_count++（分支节点统计，用于圈复杂度）。
    - field_declaration → visit_field_declaration：当 current_composite_ 非空时提取字段信息。
@@ -1299,14 +1304,20 @@ public:
 1. 调用 load_template 获取内嵌的 HTML 骨架字符串（定义在 Reporter.cpp 中，含 Inja 占位符 `{{ cytoscape_js }}` / `{{ data_json }}` / `{{ bridge_js }}`）。
 2. 调用 build_json 将所有输入数据组装为单一 JSON 对象：
    - metadata：项目名、文件数、函数数、C/C++ 编译器、运行命令、生成时间。
-   - symbols：含函数签名信息（return_type、parameters、is_virtual/is_static/is_inline）。
-   - composites：结构体/类的字段信息（name、type、access）。
+   - symbols：含函数签名信息（return_type、parameters、is_virtual/is_static/is_inline）及 Doxygen 注释（comment）。
+   - composites：结构体/类的字段信息（name、type、access）及 Doxygen 注释（comment）。
    - call_graph / include_graph / type_graph：通过 convert_* 函数转换。
    - hotspots / anomalies：分别通过 build_hotspots 和 build_anomalies 构建。
    - external_refs：外部符号引用列表（caller_name、callee_name、推测的 library）。
    - stats：文件统计和函数统计（供前端直接渲染）。
 3. 使用 Inja 模板引擎（`inja::Environment::render`）将 JSON 数据、Cytoscape.js 库、桥接 JS 注入模板占位符。
 4. 返回 HTMLReport，包含完整 HTML 字符串。
+
+##### 前端交互说明
+- **节点显示**：所有节点统一使用圆角矩形（round-rectangle），宽度自适应文字内容；函数节点标签显示"函数名\n(文件名)"，包含图节点只显示文件名。
+- **节点信息面板**：选中节点后，视图左上角显示信息框，包含类型、文件、行号、被调用/调用数、圈复杂度，以及 Doxygen 注释内容（若存在）。信息框使用 `#D5EE2E` 边框色与选中节点关联。
+- **侧边栏**：位于视图右侧，折叠后仅保留展开按钮（位于 canvas 区域右上角），点击展开后显示 280px 宽的符号搜索列表。
+- **性能降级**：节点超过 1000 时自动启用大图模式（hideEdgesOnViewport、motionBlur）。
 
 ##### 依赖的数据结构
 - 输入接口数据：std::vector<SymbolMetadata>、AnalysisStats

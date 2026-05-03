@@ -5,10 +5,12 @@
 #include "config.h"  // 包含 config.h，形成包含链
 #include <string>
 
-// 应用初始化函数 - 被 main() 调用，内部调用 load_config() 和 setup_logger()
+/// @brief 应用初始化
+/// 被 main() 调用，内部调用 load_config() 和 setup_logger()
 void init_app();
 
-// 打印配置信息
+/// @brief 打印配置信息
+/// @param cfg 应用配置结构体
 void print_config(const Config& cfg);
 
 #endif // UTILS_H

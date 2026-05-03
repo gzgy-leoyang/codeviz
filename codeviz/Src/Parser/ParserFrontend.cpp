@@ -109,6 +109,10 @@ FileParseResult ParserFrontend::parse_file(const SourceFile& source,
     FileParseResult result;
     result.file_path = source.file_path;
 
+    // 重置文件间状态
+    last_comment_.clear();
+    last_comment_line_ = 0;
+
     // 根据扩展名判断语言类型
     std::string ext;
     auto dot_pos = source.file_path.rfind('.');
@@ -194,7 +198,19 @@ void ParserFrontend::traverse_cst(TSNode node, FileParseResult& result,
 
     const char* type = ts_node_type(node);
 
-    if (strcmp(type, "function_definition") == 0) {
+    if (strcmp(type, "comment") == 0) {
+        std::string text = node_text(node, source);
+        // 仅支持 Doxygen 格式注释（/// 或 /**）
+        if (text.rfind("///", 0) == 0 || text.rfind("/**", 0) == 0) {
+            if (last_comment_.empty()) {
+                last_comment_ = text;
+            } else {
+                last_comment_ += "\n" + text;
+            }
+            last_comment_line_ = ts_node_end_point(node).row + 1;
+        }
+        return;
+    } else if (strcmp(type, "function_definition") == 0) {
         visit_function_definition(node, result, source, scope);
         return;
     } else if (strcmp(type, "call_expression") == 0) {
@@ -290,6 +306,12 @@ void ParserFrontend::visit_function_definition(TSNode node,
     // 提取函数签名（参数、虚/静/内联标记）
     visit_function_declarator(decl, sym, source);
 
+    // 关联前导注释（同一行或上一行）
+    if (!last_comment_.empty() && sym.line_start - last_comment_line_ <= 2) {
+        sym.comment = last_comment_;
+    }
+    last_comment_.clear();
+
     result.symbols.push_back(sym);
 
     // 进入函数体，继续遍历以收集 call_expression
@@ -297,6 +319,7 @@ void ParserFrontend::visit_function_definition(TSNode node,
     RawSymbol* func_ptr = &result.symbols.back();
     TSNode body = child_by_field(node, "body");
     if (!ts_node_is_null(body)) {
+        last_comment_.clear();  // 防止函数体内注释泄漏
         traverse_cst(body, result, source, scope, func_ptr);
     }
     scope.pop_back();
@@ -369,6 +392,12 @@ void ParserFrontend::visit_struct_specifier(TSNode node,
     sym.line_start = ts_node_start_point(node).row + 1;
     sym.line_end   = ts_node_end_point(node).row + 1;
 
+    // 关联前导注释
+    if (!last_comment_.empty() && sym.line_start - last_comment_line_ <= 2) {
+        sym.comment = last_comment_;
+    }
+    last_comment_.clear();
+
     result.symbols.push_back(sym);
 
     scope.push_back(struct_name);
@@ -386,6 +415,7 @@ void ParserFrontend::visit_struct_specifier(TSNode node,
     if (!ts_node_is_null(field_list)) {
         current_access_ = AccessSpecifier::PUBLIC;
         current_composite_ = &result.symbols.back();
+        last_comment_.clear();  // 防止结构体体内注释泄漏
         traverse_cst(field_list, result, source, scope, nullptr);
         current_composite_ = nullptr;
     }
@@ -409,6 +439,12 @@ void ParserFrontend::visit_class_specifier(TSNode node,
     sym.file_path  = result.file_path;
     sym.line_start = ts_node_start_point(node).row + 1;
     sym.line_end   = ts_node_end_point(node).row + 1;
+
+    // 关联前导注释
+    if (!last_comment_.empty() && sym.line_start - last_comment_line_ <= 2) {
+        sym.comment = last_comment_;
+    }
+    last_comment_.clear();
 
     // 提取基类列表
     uint32_t child_count = ts_node_child_count(node);
@@ -446,6 +482,7 @@ void ParserFrontend::visit_class_specifier(TSNode node,
     if (!ts_node_is_null(field_list)) {
         current_access_ = AccessSpecifier::PRIVATE;
         current_composite_ = &result.symbols.back();
+        last_comment_.clear();  // 防止类体内注释泄漏
         traverse_cst(field_list, result, source, scope, nullptr);
         current_composite_ = nullptr;
     }

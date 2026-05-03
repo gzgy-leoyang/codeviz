@@ -8,7 +8,8 @@
 #define MAX_CONNECTIONS 100
 #define API_VERSION "1.0"
 
-// 公共类型枚举（放在 include 之前，确保 base_handler.h 中可使用 StatusCode）
+/// @brief 状态码枚举
+/// 定义操作返回状态，OK/ERROR/TIMEOUT
 enum class StatusCode {
     OK = 0,
     ERROR = 1,
@@ -19,11 +20,15 @@ enum class StatusCode {
 // 使用 #ifndef 保护避免编译错误，但工具应能检测出循环包含关系
 #include "handler/base_handler.h"
 
-// 使用宏包裹的函数声明
+/// @brief 调试状态打印（仅在 DEBUG_MODE 下编译）
+/// @param code 要打印的状态码
 #ifdef DEBUG_MODE
 void debug_print_status(StatusCode code);
 #endif
 
+/// @brief 检查连接数是否超过上限
+/// @param count 当前连接数
+/// @return 连接数正常返回 OK，超过 MAX_CONNECTIONS 返回 ERROR
 StatusCode check_connection(int count);
 
 #endif // COMMON_TYPES_H

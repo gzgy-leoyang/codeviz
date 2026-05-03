@@ -6,21 +6,24 @@
 // 循环依赖：base_handler.h 包含 types.h，而 types.h 也包含 base_handler.h
 #include "common/types.h"
 
-// 抽象基类 - HttpHandler 将继承此类
+/// @brief 请求处理抽象基类
+/// HttpHandler 将继承此类，验证类继承关系提取
 class BaseHandler {
 public:
     virtual ~BaseHandler() = default;
 
-    // 纯虚函数 - 派生类必须实现
+    /// @brief 处理请求（纯虚函数）
+    /// 派生类必须实现此方法
     virtual void handle() = 0;
 
-    // 虚函数 - 派生类可覆盖
+    /// @brief 获取处理器名称
+    /// @return 返回 "BaseHandler"，派生类可覆盖
     virtual std::string name() {
         return "BaseHandler";
     }
 
 protected:
-    StatusCode status_ = StatusCode::OK;
+    StatusCode status_ = StatusCode::OK;  ///< 当前处理状态
 };
 
 #endif // BASE_HANDLER_H

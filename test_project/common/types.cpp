@@ -3,7 +3,8 @@
 #include <iostream>
 
 #ifdef DEBUG_MODE
-// 调试模式下的状态打印 - 验证条件编译检测
+/// @brief 调试模式下打印状态码
+/// @param code 要打印的状态码枚举值
 void debug_print_status(StatusCode code) {
     switch (code) {
         case StatusCode::OK:
@@ -19,7 +20,9 @@ void debug_print_status(StatusCode code) {
 }
 #endif
 
-// 检查连接数是否超过 MAX_CONNECTIONS 宏定义的上限
+/// @brief 检查连接数是否超过 MAX_CONNECTIONS 上限
+/// @param count 当前连接数
+/// @return 连接数正常返回 OK，超过返回 ERROR
 StatusCode check_connection(int count) {
 #ifdef DEBUG_MODE
     debug_print_status(StatusCode::OK);

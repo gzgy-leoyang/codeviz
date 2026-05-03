@@ -110,6 +110,8 @@ private:
     bool is_cpp_ = false;
     AccessSpecifier current_access_ = AccessSpecifier::NONE;  // 当前类体内的访问修饰符
     RawSymbol* current_composite_ = nullptr;  // 当前正在遍历的结构体/类符号
+    std::string last_comment_;               // 上一个 comment 节点内容（关联到下一个定义）
+    uint32_t last_comment_line_ = 0;         // comment 结束行号（用于判断关联）
 };
 
 #endif // CODEVIZ_PARSER_FRONTEND_H

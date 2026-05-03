@@ -60,6 +60,7 @@ struct FunctionSymbol {
     uint32_t symbol_id = 0;             // 关联到 Symbol::id
     std::string return_type;            // 返回值类型字符串
     std::vector<std::string> parameters; // 参数类型列表
+    std::string comment;                // 声明/定义前的注释文档
     bool is_virtual = false;            // 虚函数标记
     bool is_static = false;             // 静态函数标记
     bool is_inline = false;             // 内联函数标记
@@ -76,6 +77,7 @@ struct CompositeSymbol {
     std::vector<FieldInfo> fields;      // 成员字段列表
     std::vector<uint32_t> methods;      // 成员函数 Symbol ID 列表
     std::vector<uint32_t> base_classes; // 基类 Symbol ID 列表
+    std::string comment;               // 声明前的注释文档
     bool is_pod = false;                // 是否为平凡类型
     size_t total_size = 0;              // 类型总大小（字节）
 };
@@ -149,6 +151,7 @@ struct RawSymbol {
     // 函数扩展信息
     std::string return_type;
     std::vector<std::string> parameters;
+    std::string comment;            // 声明/定义前的注释文档
     bool is_virtual = false;
     bool is_static = false;
     bool is_inline = false;
