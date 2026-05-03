@@ -58,7 +58,7 @@ static const char* HTML_TEMPLATE = R"HTML(
         td { padding: 8px; border-bottom: 1px solid #0f3460; }
         .hotbar { height: 8px; border-radius: 4px; display: inline-block; min-width: 4px; }
         .anomaly { background: #e94560; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin: 4px 0; }
-        #node-info { position: absolute; bottom: 16px; right: 16px; background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 12px; max-width: 300px; display: none; font-size: 13px; z-index: 10; }
+        #node-info { position: absolute; bottom: 16px; right: 16px; background: #16213e; border: 1px solid #D5EE2E; border-radius: 8px; padding: 12px; max-width: 300px; display: none; font-size: 13px; z-index: 10; }
         #node-info h4 { color: #e94560; margin-bottom: 8px; }
         #node-info .kv { display: flex; justify-content: space-between; margin-bottom: 4px; }
         #node-info .kv .k { color: #aaa; }
@@ -100,8 +100,8 @@ static const char* HTML_TEMPLATE = R"HTML(
                 <div class="kv"><span class="k">类型</span><span id="ni-kind">-</span></div>
                 <div class="kv"><span class="k">文件</span><span id="ni-file">-</span></div>
                 <div class="kv"><span class="k">行号</span><span id="ni-line">-</span></div>
-                <div class="kv"><span class="k">扇入</span><span id="ni-fanin">-</span></div>
-                <div class="kv"><span class="k">扇出</span><span id="ni-fanout">-</span></div>
+                <div class="kv"><span class="k">被调用</span><span id="ni-fanin">-</span></div>
+                <div class="kv"><span class="k">调用</span><span id="ni-fanout">-</span></div>
                 <div class="kv"><span class="k">圈复杂度</span><span id="ni-cc">-</span></div>
             </div>
         </div>
@@ -129,7 +129,7 @@ var data=window.CODEVIZ_DATA;
 var cy=null;
 var WEBGL_THRESHOLD=1000;
 function heatColor(v){var r=Math.round(v*220+35),g=Math.round((1-v)*150+30),b=Math.round((1-v)*180+30);return'rgb('+r+','+g+','+b+')';}
-function nodeShape(k){switch(k){case'FUNCTION':return'ellipse';case'STRUCT':case'CLASS':return'rectangle';case'FILE_ENTITY':return'diamond';default:return'ellipse';}}
+function nodeShape(k){switch(k){case'FUNCTION':case'STRUCT':case'CLASS':case'FILE_ENTITY':return'round-rectangle';default:return'round-rectangle';}}
 function buildElements(graphData,symbols,stats){
 var elements=[];var symbolMap={};symbols.forEach(function(s){symbolMap[s.symbol_id]=s;});
 var statsMap={};if(stats&&stats.function_stats){stats.function_stats.forEach(function(f){statsMap[f.function_id]=f;});}
@@ -139,7 +139,10 @@ if(stats&&stats.function_stats){stats.function_stats.forEach(function(f){if(f.fa
 if(nodeSet.has(n.id))return;nodeSet.add(n.id);
 var sym=symbolMap[n.id]||{};var fstat=statsMap[n.id]||{};
 var heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
-elements.push({group:'nodes',data:{id:String(n.id),label:n.label||sym.name||String(n.id),kind:sym.kind||n.type||'FUNCTION',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal}});
+var kind=sym.kind||n.type||'FUNCTION';
+var label=n.label||sym.name||String(n.id);
+if(kind!=='FILE_ENTITY'){var fname=(sym.file_path||'').split('/').pop();if(fname)label+='\n('+fname+')';}
+elements.push({group:'nodes',data:{id:String(n.id),label:label,kind:kind,shape:nodeShape(kind),file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal}});
 });
 (graphData.edges||[]).forEach(function(e,idx){elements.push({group:'edges',data:{id:'e'+idx,source:String(e.source_id),target:String(e.target_id),relation:e.relation||'CALLS',weight:e.weight||1}});});
 return elements;}
@@ -150,9 +153,9 @@ var nodeCount=elements.filter(function(e){return e.group==='nodes';}).length;
 var isLarge=nodeCount>1000;var notice=document.getElementById('degrade-notice');
 if(isLarge&&notice){notice.style.display='block';notice.textContent='大图模式: '+nodeCount+' 个节点，已启用性能优化';}
 try{var opts={container:container,elements:elements,
-style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':isLarge?'9px':'11px','text-valign':'center','text-halign':'center',width:isLarge?'40px':'60px',height:isLarge?'20px':'30px','border-width':1,'border-color':'#e94560','background-color':'#16213e'}},
+style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':isLarge?'9px':'11px','text-valign':'center','text-halign':'center','shape':'data(shape)','width':'label','height':'label','text-wrap':'wrap','padding':'6px','border-width':1,'border-color':'#e94560','background-color':'#16213e'}},
 {selector:'edge',style:{width:isLarge?1:1.5,'line-color':'#0f3460','target-arrow-color':'#e94560','target-arrow-shape':'triangle','curve-style':'bezier'}},
-{selector:'node:selected',style:{'border-width':3,'border-color':'#e94560'}}],
+{selector:'node:selected',style:{'border-width':3,'border-color':'#D5EE2E'}}],
 layout:{name:'cose',padding:20}};
 if(isLarge){opts.hideEdgesOnViewport=true;opts.motionBlur=true;opts.textEvents='no';opts.wheelSensitivity=0.5;}
 cy=cytoscape(opts);
@@ -175,7 +178,7 @@ function renderSidebar(){var list=document.getElementById('symbol-list');list.in
 function renderStats(){
 var stats=data.stats||{};var meta=data.metadata||{};
 var sp=document.getElementById('stats-panel');
-sp.innerHTML='<div class="stat-card"><h3>项目概览</h3><table id="sum-tbl"></table></div><div class="stat-card"><h3>文件热力图</h3><table id="file-tbl"><tr><th>文件</th><th>行数</th><th>热力</th></tr></table></div><div class="stat-card"><h3>函数热力图</h3><table id="func-tbl"><tr><th>函数</th><th>扇入</th><th>扇出</th><th>圈复杂度</th></tr></table></div><div class="stat-card"><h3>异常检测</h3><div id="ano-list"></div></div>';
+sp.innerHTML='<div class="stat-card"><h3>项目概览</h3><table id="sum-tbl"></table></div><div class="stat-card"><h3>文件热力图</h3><table id="file-tbl"><tr><th>文件</th><th>行数</th><th>热力</th></tr></table></div><div class="stat-card"><h3>函数热力图</h3><table id="func-tbl"><tr><th>函数</th><th>被调用</th><th>调用</th><th>圈复杂度</th></tr></table></div><div class="stat-card"><h3>异常检测</h3><div id="ano-list"></div></div>';
 var st=document.getElementById('sum-tbl');
 st.innerHTML='<tr><th>项目</th><td>'+( meta.project_name||'-')+'</td></tr><tr><th>文件数</th><td>'+(meta.file_count||0)+'</td></tr><tr><th>函数数</th><td>'+(meta.function_count||0)+'</td></tr><tr><th>C编译器</th><td>'+(meta.c_compiler||'-')+'</td></tr><tr><th>C++编译器</th><td>'+(meta.cxx_compiler||'-')+'</td></tr>';
 var ml=Math.max.apply(null,(stats.file_stats||[]).map(function(f){return f.code_lines||0;}).concat([1]));

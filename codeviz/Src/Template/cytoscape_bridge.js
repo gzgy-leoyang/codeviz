@@ -23,11 +23,11 @@
     // 将符号类型映射到节点形状
     function nodeShape(kind) {
         switch (kind) {
-            case 'FUNCTION': return 'ellipse';
+            case 'FUNCTION':
             case 'STRUCT':
-            case 'CLASS':    return 'rectangle';
-            case 'FILE_ENTITY': return 'diamond';
-            default:         return 'ellipse';
+            case 'CLASS':
+            case 'FILE_ENTITY': return 'round-rectangle';
+            default:            return 'round-rectangle';
         }
     }
 
@@ -52,26 +52,30 @@
             const sym = symbolMap[n.id] || {};
             const fstat = statsMap[n.id] || {};
 
-            // 计算热力值（扇入越高越热）
+            // 计算热力值（被调用次数越高越热）
             const maxFanIn = stats && stats.maxFanIn || 1;
             const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
+
+            const kind = sym.kind || n.type || 'FUNCTION';
+            let label = n.label || sym.name || String(n.id);
+            if (kind !== 'FILE_ENTITY') {
+                const fname = (sym.file_path || '').split('/').pop();
+                if (fname) label += '\n(' + fname + ')';
+            }
 
             elements.push({
                 group: 'nodes',
                 data: {
                     id: String(n.id),
-                    label: n.label || sym.name || String(n.id),
-                    kind: sym.kind || n.type || 'FUNCTION',
+                    label: label,
+                    kind: kind,
+                    shape: nodeShape(kind),
                     file: sym.file_path || '',
                     line: sym.line || 0,
                     fan_in: fstat.fan_in || 0,
                     fan_out: fstat.fan_out || 0,
                     complexity: fstat.cyclomatic_complexity || 0,
                     heat: heatVal
-                },
-                style: {
-                    'background-color': heatColor(heatVal),
-                    'shape': nodeShape(sym.kind || n.type || 'FUNCTION')
                 }
             });
         });
@@ -117,8 +121,11 @@
                             'font-size': '11px',
                             'text-valign': 'center',
                             'text-halign': 'center',
-                            'width': '60px',
-                            'height': '30px',
+                            'shape': 'data(shape)',
+                            'width': 'label',
+                            'height': 'label',
+                            'text-wrap': 'wrap',
+                            'padding': '6px',
                             'border-width': 1,
                             'border-color': '#e94560'
                         }
@@ -137,8 +144,7 @@
                         selector: 'node:selected',
                         style: {
                             'border-width': 3,
-                            'border-color': '#e94560',
-                            'background-color': '#e94560'
+                            'border-color': '#D5EE2E'
                         }
                     }
                 ],

@@ -37,7 +37,7 @@
         td { padding: 8px; border-bottom: 1px solid #0f3460; }
         .hotbar { height: 8px; border-radius: 4px; display: inline-block; min-width: 4px; }
         .anomaly { background: #e94560; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin: 4px 0; }
-        #node-info { position: absolute; bottom: 16px; right: 16px; background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 12px; max-width: 300px; display: none; font-size: 13px; z-index: 10; }
+        #node-info { position: absolute; bottom: 16px; right: 16px; background: #16213e; border: 1px solid #D5EE2E; border-radius: 8px; padding: 12px; max-width: 300px; display: none; font-size: 13px; z-index: 10; }
         #node-info h4 { color: #e94560; margin-bottom: 8px; }
         #node-info .kv { display: flex; justify-content: space-between; margin-bottom: 4px; }
         #node-info .kv .k { color: #aaa; }
@@ -79,8 +79,8 @@
                 <div class="kv"><span class="k">类型</span><span id="ni-kind">-</span></div>
                 <div class="kv"><span class="k">文件</span><span id="ni-file">-</span></div>
                 <div class="kv"><span class="k">行号</span><span id="ni-line">-</span></div>
-                <div class="kv"><span class="k">扇入</span><span id="ni-fanin">-</span></div>
-                <div class="kv"><span class="k">扇出</span><span id="ni-fanout">-</span></div>
+                <div class="kv"><span class="k">被调用</span><span id="ni-fanin">-</span></div>
+                <div class="kv"><span class="k">调用</span><span id="ni-fanout">-</span></div>
                 <div class="kv"><span class="k">圈复杂度</span><span id="ni-cc">-</span></div>
             </div>
         </div>
@@ -98,7 +98,7 @@
             <div class="stat-card">
                 <h3>函数热力图 (按被调用次数)</h3>
                 <table id="func-hotspot-table">
-                    <tr><th>函数</th><th>扇入</th><th>扇出</th><th>圈复杂度</th></tr>
+                    <tr><th>函数</th><th>被调用</th><th>调用</th><th>圈复杂度</th></tr>
                 </table>
             </div>
             <div class="stat-card" id="anomaly-card">
