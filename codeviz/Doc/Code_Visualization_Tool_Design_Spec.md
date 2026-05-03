@@ -271,7 +271,7 @@ flowchart TD
         direction TB
         CLI["执行 CLI 工具 (./codeviz)"]
         ProjectDir["待分析项目（文本文件）<br>.c / .cpp / .h / .hpp<br>CMakeLists.txt<br>compile_commands.json"]
-        OutputHTML["生成的 HTML 报告<br>(index.html)"]
+        OutputHTML["生成的 HTML 报告<br>(report.html)"]
         ProjectDir -->|"读取源文件与配置"| CLI
         CLI -->|"生成自包含 HTML"| OutputHTML
     end
@@ -287,8 +287,8 @@ flowchart TD
 | 节点 | 说明 |
 | :--- | :--- |
 | 代码可视化工具开发环境 | 在开发者的 Linux 工作站上，使用 C++ 源码和第三方库（tree-sitter、CLI11 等），通过 CMake + GCC 编译生成独立可执行文件 codeviz。前端资源（Cytoscape.js）以字符串形式内嵌在可执行文件中，无需额外部署。 |
-| 运行时环境 | 用户在 Linux 终端中执行 ./codeviz -p <项目路径> -o report.html。工具只读地读取待分析项目的源文件（.c/.cpp/.h/.hpp）、CMakeLists.txt 和 compile_commands.json（若存在），生成一个自包含的 index.html 文件。所有被分析对象均为纯文本文件，工具不运行或编译它们。 |
-| 查看环境 | 用户双击或用浏览器打开生成的 index.html，所有可视化渲染在用户本地浏览器中完成，无需网络连接（离线可用）。 |
+| 运行时环境 | 用户在 Linux 终端中执行 ./codeviz -p <项目路径> -o report.html。工具只读地读取待分析项目的源文件（.c/.cpp/.h/.hpp）、CMakeLists.txt 和 compile_commands.json（若存在），生成一个自包含的 HTML 文件（默认 <project_path>.html）。所有被分析对象均为纯文本文件，工具不运行或编译它们。 |
+| 查看环境 | 用户双击或用浏览器打开生成的 HTML 报告，所有可视化渲染在用户本地浏览器中完成，无需网络连接（离线可用）。 |
 | 虚线箭头 | 表示可执行文件的分发（从开发环境复制到运行环境）。 |
 
 
@@ -338,7 +338,7 @@ sequenceDiagram
     CLI ->> Reporter: generate(SymbolMetadata, AnalysisStats, AnalysisContext)
     Reporter -->> CLI: HTMLReport
 
-    CLI ->> CLI: 写入 index.html
+    CLI ->> CLI: 写入 HTML 报告文件
 
     User ->> Browser: 打开 index.html
     Browser ->> Browser: Cytoscape.js 渲染
@@ -396,22 +396,23 @@ graph TD
     ROOT --> R3["📄 CMakeLists.txt (顶层)"]
     ROOT --> R4["📄 build.sh"]
     
-    ROOT --> D1["📁 Doc/<br>Design_Spec.md<br>Architecture.md"]
+    ROOT --> D1["📁 Doc/<br>Design_Spec.md"]
     
-    ROOT --> S1["📁 Src/<br>CMakeLists.txt<br>CLI.h/.cpp<br>CMakeParser.h/.cpp<br>CompDBParser.h/.cpp<br>ParserFrontend.h/.cpp<br>Indexer.h/.cpp<br>GraphBuilder.h/.cpp<br>Analyzer.h/.cpp<br>Reporter.h/.cpp<br>template.html<br>cytoscape_bridge.js"]
+    ROOT --> S1["📁 Src/<br>CMakeLists.txt<br>CLI.h/.cpp<br>CMakeParser.h/.cpp<br>CompDBParser.h/.cpp<br>ParserFrontend.h/.cpp<br>Indexer.h/.cpp<br>GraphBuilder.h/.cpp<br>Analyzer.h/.cpp<br>Reporter.h/.cpp"]
     
     ROOT --> T1["📁 3rdparty/<br>tree-sitter<br>CLI11<br>spdlog<br>nlohmann<br>Inja"]
     
-    ROOT --> E1["📁 Test/<br>CMakeLists.txt<br>CLI/<br>Parser/<br>Indexer/"]
-    
     ROOT --> B1["📁 build/<br>build/output/codeviz (可执行文件)"]
+    
+    ROOT --> DP["📄 deploy.sh"]
 
 ```
 | 目录/文件 | 用途 |
 | :--- | :--- |
 | CMakeLists.txt (顶层) | 定义项目名称、版本、子目录，汇总构建目标 |
-| build.sh | 一键构建脚本（cmake -B build && cmake --build build） |
-| Doc/ | 设计文档、架构图、API 说明等 |
+| build.sh | 一键构建脚本（cmake -B build && cmake --build build，可执行文件输出到 build/output/codeviz） |
+| Doc/ | 设计文档 |
+| Src/CMakeLists.txt | 定义可执行目标、第三方库链接、输出目录（CMAKE_RUNTIME_OUTPUT_DIRECTORY = build/output/）|
 | Src/ | 所有源代码，按模块分目录便于维护 |
 | Src/CLI/ | CLI 入口 + 参数解析 + 流程调度 |
 | Src/CMakeParser/ | CMake 构建配置解析 |
@@ -421,9 +422,9 @@ graph TD
 | Src/GraphBuilder/ | 调用图/包含图/类型依赖图构建 |
 | Src/Analyzer/ | 统计分析引擎 |
 | Src/Reporter/ | JSON 序列化 + Inja 模板渲染 |
-| Src/Template/ | 前端渲染模板及相关 JS 桥接文件 |
+| Src/Template/ | 前端模板及 JS 桥接参考文件（实际使用 Reporter.cpp 内嵌的 C++ string literal）|
 | 3rdparty/ | 第三方库，header-only 或源码，通过 CMake add_subdirectory 引入 |
-| Test/ | 单元测试和集成测试，按对应模块分目录 |
+| deploy.sh | 运行环境检测脚本，检查可选运行时依赖（python3/git/firefox等）|
 | build/ | 构建产物，.gitignore 中忽略 |
 
 
@@ -440,7 +441,7 @@ graph TD
 | **CLI 入口模块** | 解析用户命令行参数（如入口函数、展开深度、输出路径），协调调度后续各解析模块的执行顺序，是整个工具的调度中心 | 命令行参数（`argv`） | 调度指令（触发源文件扫描、构建配置读取、启动解析任务） |
 | **CMake 解析模块** | 递归读取并解析项目中的多级 `CMakeLists.txt` 文件，提取构建目标（`add_executable`、`add_library`）、链接库依赖（`target_link_libraries`）以及编译工具链信息 | `CMakeLists.txt` 文件文本 | 1. 目标依赖拓扑数据（target 名称、类型、链接库列表）<br>2. 编译工具链信息（`CMAKE_C_COMPILER`、`CMAKE_CXX_COMPILER`）<br>3. 对编译数据库解析模块的调用请求 |
 | **编译数据库解析模块** | 读取 CMake 生成的 `compile_commands.json` 文件，为每个源文件提取精确的编译参数，包括宏定义（`-D`）、头文件搜索路径（`-I`）及其他编译选项 | `compile_commands.json` 文件内容（若存在） | 以源文件为键的编译参数映射表（宏、头文件路径、编译选项） |
-| **C/C++ 解析前端** | 基于 Clang LibTooling 或 tree-sitter 对 C/C++ 源文件进行语法分析，遍历抽象语法树（AST），提取函数定义、函数调用点、结构体/类定义、变量声明、宏展开等符号信息 | 1. 源文件文本内容<br>2. 编译参数（来自编译数据库或默认推断） | 原始 AST 符号信息流（函数声明、调用关系、类型定义、包含关系等） |
+| **C/C++ 解析前端** | 基于 tree-sitter 对 C/C++ 源文件进行语法分析，遍历具体语法树（CST），提取函数定义、函数调用点、结构体/类定义、字段声明、宏定义、#include 指令等符号信息 | 1. 源文件文本内容<br>2. 编译参数（来自编译数据库或默认推断） | 原始符号信息流（函数声明、调用关系、结构体/类定义、字段、包含关系等） |
 | **符号索引模块** | 将解析前端输出的原始符号信息整理为结构化的符号表，建立符号名称到定义位置、类型、作用域的映射，并提供高效查询接口 | AST 符号信息流（函数、变量、类型等） | 1. 全局符号表（Symbol Table）<br>2. 符号引用关系索引（如某函数被哪些位置调用） |
 | **图构建模块** | 基于符号表和引用关系，构建各类关系图：函数调用图（Call Graph）、头文件包含图（Include Graph）、类型依赖图（Type Dependency Graph） | 1. 符号表<br>2. 符号引用关系 | 1. 调用图（节点：函数，边：调用）<br>2. 包含图（节点：文件，边：`#include`）<br>3. 类型依赖图（节点：`struct`/`class`，边：包含/继承） |
 | **分析引擎** | 对构建好的图数据和源码元数据进行统计分析，计算代码行数、圈复杂度、扇入扇出、被调用热度等指标，为热力图和异常检测提供数据支持 | 1. 调用图 / 包含图 / 类型依赖图<br>2. 符号表<br>3. 构建元数据（来自 CMake 解析模块） | 1. 文件级统计（代码行数、复杂度）<br>2. 函数级统计（扇入/扇出、被调用次数）<br>3. 异常关系报告（如循环包含） |
@@ -449,7 +450,7 @@ graph TD
 ### 3.8 前端渲染
 | 名称 | 功能 | 输入 | 输出 |
 | :--- | :--- | :--- | :--- |
-| **浏览器渲染引擎** | 在用户浏览器中加载 `index.html`，解析内嵌的 JSON 数据，使用 Cytoscape.js 或 D3.js 绘制交互式图形，响应缩放、拖拽、节点点击等用户操作 | 内嵌在 HTML 中的 JSON 分析数据 + 用户交互事件 | 屏幕上的可交互图形界面 |
+| **浏览器渲染引擎** | 在用户浏览器中加载生成的 HTML 报告，解析内嵌的 JSON 数据，使用 Cytoscape.js 绘制交互式图形，响应缩放、拖拽、节点点击、侧边栏折叠等用户操作 | 内嵌在 HTML 中的 JSON 分析数据 + 用户交互事件 | 屏幕上的可交互图形界面 |
 
 ## 4. 详细设计
 
@@ -497,7 +498,7 @@ graph TD
 | 复杂度管理 | 有。提供复杂度管理扩展，支持过滤、隐藏/显示、折叠/展开节点/边等操作，并支持布局自动调整以保护用户心智地图。 | 有。提供聚类功能（如按枢纽大小、离群点、桥接点等），显著减少需要渲染和模拟的元素数量。 |
 | 工具定位 | 适合需要处理复杂网络、大规模图数据、需要高级分析功能和深度定制的场景（如生物信息学、社交网络分析、复杂依赖关系可视化）。 | 适合快速构建原型、中小规模网络可视化、需要内置物理模拟和简单易用API的场景。 |
 
-选择 Cytoscape.js ：能更好地应对大规模源码图的性能压力，内置图分析算法可直接识别代码耦合热点，且层次化布局更符合函数调用关系的表达需求。后期保留 Vis.js 仅作为快速原型或物理模拟场景的轻量备选。
+选择 Cytoscape.js ：能更好地应对大规模源码图的性能压力，内置图分析算法可直接识别代码耦合热点，且层次化布局更符合函数调用关系的表达需求。
 
 
 #### 4.1.3 技术路线和选型汇总
@@ -549,11 +550,23 @@ struct CompileArgs {
 流动内容：从单个源文件的 CST 中提取的原始符号和引用关系，尚未去重和全局索引
 ```cpp
 struct RawSymbol {
-    std::string name;                // 符号名称（可能有重名）
-    std::string file_path;           // 定义位置
-    uint32_t line_start, line_end;   // 行号范围
-    enum Kind { FUNC, STRUCT, VAR, MACRO } kind;
+    std::string name;                   // 符号名称（可能有重名）
+    std::string file_path;              // 定义位置
+    uint32_t line_start = 0, line_end = 0; // 行号范围
+    enum Kind { FUNC, STRUCT, CLASS, ENUM_KIND, VAR, MACRO } kind = FUNC;
     std::vector<std::string> callee_names; // 调用的函数名（未解析为 ID）
+    // 函数扩展信息（由 visit_function_declarator 填充）
+    std::string return_type;
+    std::vector<std::string> parameters;
+    bool is_virtual = false;
+    bool is_static = false;
+    bool is_inline = false;
+    int branch_count = 0;       // 分支节点数（由 ParserFrontend 统计）
+    // 复合类型扩展信息
+    std::vector<FieldInfo> fields;       // 成员字段
+    std::vector<uint32_t> method_symbol_ids;
+    std::vector<std::string> base_class_names; // 基类名称（未解析为 ID）
+    AccessSpecifier access = AccessSpecifier::NONE;
 };
 
 struct FileParseResult {
@@ -566,7 +579,7 @@ struct FileParseResult {
 };
 ```
 5. 符号索引模块 --> 图构建模块
-流动内容：去重后的全局符号表，以及已解析为 ID 的引用关系
+流动内容：已填充的 AnalysisContext（含去重后的全局符号表及引用关系，通过 AnalysisContext 直接传递）
 ```cpp
 struct SymbolRef {
     uint32_t from_symbol_id;   // 引用者
@@ -777,7 +790,10 @@ struct AnalysisContext {
     std::vector<IncludeEdge> include_edges;
     std::vector<TypeDependencyEdge> type_edges;
     std::vector<SymbolRef> references;
-    
+
+    // 命令行参数（用于报告展示）
+    std::string command_line;
+
     // 外部符号引用
     std::vector<ExternalRef> external_refs;
 
@@ -841,7 +857,7 @@ flowchart TD
     compile_commands.json -->|JSON 内容| CompDBParser
     CompDBParser -->|struct CompileArgs| Parser
     Parser -->|struct FileParseResult| Indexer
-    Indexer -->|struct IndexedData| GraphBuilder
+    Indexer -->|AnalysisContext| GraphBuilder
     GraphBuilder -->|struct GraphData| Analyzer
     Indexer -->|struct SymbolMetadata| Reporter
     Analyzer -->|struct AnalysisStats| Reporter
@@ -865,33 +881,34 @@ int main(int argc, char* argv[]);
 
 | 函数签名 | 功能 |
 | :--- | :--- |
-| CommandLineArgs parse_arguments(int argc, char* argv[]) | 解析命令行参数 |
-| void validate_arguments(const CommandLineArgs& args) | 校验参数合法性 |
+| CommandLineArgs parse_arguments(int argc, char* argv[]) | 解析命令行参数（基于 CLI11）|
+| void validate_arguments(const CommandLineArgs& args) | 校验参数合法性（路径/深度范围）|
 | void init_logger(bool verbose) | 初始化日志等级 |
-| std::vector<std::string> scan_source_files(const std::string& root) | 递归扫描源文件 |
+| std::vector<std::string> scan_source_files(const std::string& root) | 递归扫描源文件（跳过构建目录）|
 | void ensure_output_dir(const std::string& path) | 确保输出目录存在 |
+| std::string read_file_readonly(const std::string& path) | 以只读方式打开文件（O_RDONLY）|
 
 ##### 主流程步骤
-1. 解析并校验命令行参数。
+1. 解析并校验命令行参数；若未指定 -o，默认输出到 `<project_path>.html`。
 2. 初始化日志系统。
-3. 扫描项目目录，获取源文件列表。
-4. 若存在 CMakeLists.txt，调用 CMakeParser 解析。
-5. 若存在 compile_commands.json，调用 CompDBParser 解析。
-6. 对每个源文件调用 ParserFrontend::parse_file。
+3. 扫描项目目录，获取源文件列表（跳过 /build/ /CMakeFiles/ 等目录）。
+4. 若存在 CMakeLists.txt，调用 CMakeParser 解析（含递归处理 add_subdirectory）。
+5. 若存在 compile_commands.json，调用 CompDBParser 解析；若 CMakeLists.txt 未显式指定编译器，从 command 字段推断。
+6. 对每个源文件调用 ParserFrontend::parse_file（只读打开）。
 7. 调用 Indexer::build_index 构建符号表。
 8. 调用 GraphBuilder::build 构建图数据。
 9. 调用 Analyzer::analyze 执行统计分析。
 10. 调用 Reporter::generate 生成 HTML 报告并写入文件。
 
 ##### 依赖的数据结构
-- CommandLineArgs（本模块内部定义）
+- CommandLineArgs（定义在 DataTypes.h 中）
 - SourceFile, CMakeFile, CompileArgs（接口数据）
 - AnalysisContext, BuildMetadata（核心数据）
 
 ##### 异常处理
-- 参数校验失败：打印错误并退出。
-- 文件读取失败：记录警告并跳过该文件。
-- 解析模块异常：捕获并转换为友好错误信息。
+- 参数校验失败：CLI::ParseError 通过 app.exit() 输出；其余抛出 std::invalid_argument。
+- 文件读取失败：记录警告并跳过该文件，不中止后续分析。
+- 解析模块异常：捕获并降级处理。
 
 #### 4.3.2 CMake 解析模块
 
@@ -1015,32 +1032,44 @@ public:
 | 函数签名 | 功能 |
 | :--- | :--- |
 | void init_parser(const std::string& file_ext) | 根据扩展名选择 tree-sitter-c 或 tree-sitter-cpp 解析器 |
-| void traverse_cst(TSNode root, FileParseResult& result, const std::string& source) | 深度优先遍历 CST，维护作用域栈，分发到各子处理函数 |
-| void visit_function_definition(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope) | 处理函数定义，产出 RawSymbol(kind=FUNC) |
-| void visit_function_declarator(TSNode node, RawSymbol& sym, const std::string& source) | 提取函数签名（返回类型、参数列表、虚/静/内联标记） |
-| void visit_call_expression(TSNode node, FileParseResult& result, const std::string& source) | 处理函数调用，记录 callee_name |
-| void visit_struct_specifier(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope) | 处理结构体定义 |
-| void visit_class_specifier(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope) | 处理类定义，含基类列表 |
-| void visit_field_declaration(TSNode node, RawSymbol& sym, const std::string& source) | 提取成员字段信息（名称、类型、访问修饰符） |
-| void visit_preproc_def(TSNode node, FileParseResult& result, const std::string& source) | 处理宏定义，产出 RawSymbol(kind=MACRO) |
-| void visit_preproc_include(TSNode node, FileParseResult& result, const std::string& source) | 处理 #include 指令，记录包含关系 |
+| void traverse_cst(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope, RawSymbol* current_func) | 深度优先遍历 CST，维护作用域栈；current_func 指向当前函数符号（收集 callee 和分支用）|
+| void visit_function_definition(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope) | 处理函数定义，创建 RawSymbol(kind=FUNC)，提取返回类型和签名，进入函数体遍历 |
+| void visit_function_declarator(TSNode node, RawSymbol& sym, const std::string& source) | 提取函数签名（参数列表、virtual/static/inline 修饰）|
+| void visit_call_expression(TSNode node, FileParseResult& result, const std::string& source, RawSymbol* current_func) | 处理函数调用，追加到 current_func 的 callee_names |
+| void visit_struct_specifier(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope) | 处理结构体定义，设置 current_composite_ 后遍历字段体 |
+| void visit_class_specifier(TSNode node, FileParseResult& result, const std::string& source, std::vector<std::string>& scope) | 处理类定义，含基类列表（base_class_clause）|
+| void visit_field_declaration(TSNode node, RawSymbol& sym, const std::string& source) | 提取成员字段信息（类型、字段名、访问修饰符）|
+| void visit_preproc_def(TSNode node, FileParseResult& result, const std::string& source) | 处理宏定义，创建 RawSymbol(kind=MACRO) |
+| void visit_preproc_include(TSNode node, FileParseResult& result, const std::string& source) | 处理 #include 指令，记录 (includer, includee) |
+| static void count_file_lines(const std::string& content, int& total, int& code, int& comment) | 统计文件总行数、代码行数、注释行数 |
 | std::string get_node_text(TSNode node, const std::string& source) | 提取节点对应的源码文本 |
 | std::string get_qualified_name(const std::string& base, const std::vector<std::string>& scope) | 拼接完全限定名 |
 | void enter_scope(std::vector<std::string>& scope, const std::string& name) | 进入作用域 |
 | void exit_scope(std::vector<std::string>& scope) | 退出作用域 |
 
+##### 成员变量
+| 变量 | 类型 | 用途 |
+| :--- | :--- | :--- |
+| is_cpp_ | bool | 标记当前解析语言是否为 C++ |
+| current_access_ | AccessSpecifier | 当前类体内的访问修饰符（public/protected/private）|
+| current_composite_ | RawSymbol* | 当前正在遍历的结构体/类符号（字段收集目标）|
+
 ##### 主流程步骤
 
-1. 根据源文件扩展名（.c / .cpp / .h / .hpp）选择对应的 tree-sitter 语言，初始化解析器。
+1. 根据源文件扩展名选择对应的 tree-sitter 语言（.c → C，.cpp/.hpp → C++），初始化解析器。
 2. 调用 ts_parser_parse_string 解析 SourceFile::content，获取 CST 根节点。
-3. 从根节点开始深度优先遍历 CST，维护作用域栈。
-4. 对于关键节点类型调用对应的 visit_* 处理函数：
-- function_definition -> 创建 RawSymbol(kind=FUNC)，提取函数签名和完全限定名。
-- call_expression -> 提取被调用者名称，追加到当前函数符号的 callee_names。
-- struct_specifier / class_specifier -> 创建 RawSymbol(kind=STRUCT/CLASS)，提取成员和基类。
-- preproc_def -> 创建 RawSymbol(kind=MACRO)。
-- preproc_include -> 记录 (includer, includee) 包含关系。
-5. 将 visit_* 填充的 RawSymbol 和 include 关系汇总到 FileParseResult 返回。
+3. 从根节点开始深度优先遍历 CST，维护作用域栈和当前函数指针：
+   - function_definition → visit_function_definition：创建 RawSymbol(kind=FUNC)，提取返回类型、参数、virtual/static/inline 标记；以当前函数指针遍历函数体内 CST。
+   - call_expression → visit_call_expression：提取被调用者名称，追加到 current_func->callee_names。
+   - if/for/while/do/switch/case/conditional_expression → current_func->branch_count++（分支节点统计，用于圈复杂度）。
+   - field_declaration → visit_field_declaration：当 current_composite_ 非空时提取字段信息。
+   - struct_specifier → 创建 RawSymbol(kind=STRUCT)，设置 current_composite_ 后遍历字段体。
+   - class_specifier → 创建 RawSymbol(kind=CLASS)，提取基类列表（base_class_clause），设置 current_composite_ 后遍历字段体。
+   - preproc_def / preproc_function_def → 创建 RawSymbol(kind=MACRO)。
+   - preproc_include → 记录 (includer, includee) 包含关系。
+   - access_specifier → 更新 current_access_ 为对应的枚举值。
+4. 调用 count_file_lines 统计文件行数并写入 FileParseResult。
+5. 返回 FileParseResult（内含 RawSymbol、includes、行数统计）。
 
 ##### 依赖的数据结构
 
@@ -1084,27 +1113,37 @@ public:
 
 | 函数签名 | 功能 |
 | :--- | :--- |
-| void init_context(AnalysisContext& ctx) | 初始化上下文字段 |
-| uint32_t get_or_create_symbol_id(const RawSymbol& raw, AnalysisContext& ctx) | 分配或获取全局唯一 Symbol ID |
+| void init_context(AnalysisContext& ctx) | 初始化上下文字段，重置 next_id_ |
+| uint32_t get_or_create_symbol_id(const RawSymbol& raw, AnalysisContext& ctx) | 分配或获取全局唯一 Symbol ID（key: 文件路径::名称@行号）|
 | Symbol convert_to_symbol(const RawSymbol& raw, uint32_t id) | 将 RawSymbol 转换为核心 Symbol 结构 |
-| FunctionSymbol extract_function_detail(const RawSymbol& raw, uint32_t symbol_id) | 提取函数特有字段并创建 FunctionSymbol |
-| CompositeSymbol extract_composite_detail(const RawSymbol& raw, uint32_t symbol_id) | 提取复合类型特有字段并创建 CompositeSymbol |
-| FileSymbol create_file_symbol(const std::string& file_path, AnalysisContext& ctx) | 为输入文件创建 FileSymbol 并分配 ID |
-| void process_calls(const std::vector<FileParseResult>& results, AnalysisContext& ctx) | 解析 callee_names 为 SymbolRef，生成调用边 |
-| void process_includes(const std::vector<FileParseResult>& results, AnalysisContext& ctx) | 解析 includes 关系为 IncludeEdge |
+| FunctionSymbol extract_function_detail(const RawSymbol& raw, uint32_t symbol_id) | 提取函数特有字段（返回类型、参数、virtual/static/inline、branch_count）并创建 FunctionSymbol |
+| CompositeSymbol extract_composite_detail(const RawSymbol& raw, uint32_t symbol_id) | 提取复合类型特有字段并创建 CompositeSymbol；暂存基类名称为待解析列表 |
+| FileSymbol create_file_symbol(const std::string& file_path, AnalysisContext& ctx) | 为输入文件创建 FileSymbol 并分配 ID（KEY = "FILE::" + 路径）|
+| void process_calls(const std::vector<FileParseResult>& results, AnalysisContext& ctx) | 解析 callee_names 为 SymbolRef，生成 CallEdge；未解析的符号收集为 ExternalRef |
+| void process_includes(const std::vector<FileParseResult>& results, AnalysisContext& ctx) | 解析 includes 关系为 IncludeEdge，跳过系统头文件 |
 | void fill_reverse_references(AnalysisContext& ctx) | 根据 SymbolRef 填充被引用符号的 references 列表 |
+| uint32_t resolve_include_file(const std::string& includee_path, const std::string& includer_file, const std::vector<std::string>& all_file_paths, const AnalysisContext& ctx) | 将 includee 文件名解析为项目中对应的 FileSymbol ID（精确匹配 → 后缀匹配）|
+| void resolve_composite_base_classes(AnalysisContext& ctx) | 将暂存的基类名称列表解析为 Symbol ID，生成 TypeDependencyEdge(INHERITS) |
+
+##### 成员变量
+| 变量 | 类型 | 用途 |
+| :--- | :--- | :--- |
+| next_id_ | uint32_t | 自增 ID 分配器（初始为 1）|
+| unresolved_base_classes_ | std::unordered_map<uint32_t, std::vector<std::string>> | 暂存复合类型的基类名称（待第二遍解析为 ID）|
 
 ##### 主流程步骤
-1. 初始化 AnalysisContext 的项目根目录、源文件列表等字段。
+1. 调用 init_context 初始化 AnalysisContext。
 2. 第一遍遍历所有 FileParseResult：
-   - 为每个文件创建 FileSymbol。
+   - 为每个文件调用 create_file_symbol 创建 FileSymbol。
    - 遍历该文件的 RawSymbol，对每个符号调用 get_or_create_symbol_id 分配 ID 并转换为 Symbol 存入 ctx.symbols。
-   - 根据 RawSymbol 的 kind 调用 extract_function_detail 或 extract_composite_detail，创建对应的分类型符号并存入 ctx.functions 或 ctx.composites。
+   - 根据 RawSymbol 的 kind 调用 extract_function_detail 或 extract_composite_detail，创建对应的分类型符号并存入 ctx.functions / ctx.composites。
+   - 回填文件行数（total_lines / code_lines / comment_lines）。
 3. 第二遍遍历所有 FileParseResult：
-   - 调用 process_calls 解析调用关系。对于每个 RawSymbol 的 callee_names，通过符号表查找被调用者 ID，生成 SymbolRef 并追加到 ctx.references（临时），同时构建 CallEdge 存入 ctx.call_edges。
-   - 调用 process_includes 解析 includes 列表，将文件名转换为 FileSymbol ID，生成 IncludeEdge 存入 ctx.include_edges。
-4. 调用 fill_reverse_references，遍历所有 SymbolRef，将被引用者的 references 字段补充完整。
-5. 返回 AnalysisContext。
+   - process_calls：对每个函数符号的 callee_names，查找被调用者 ID，生成 CallEdge 和 SymbolRef；未解析的外部符号收集为 ExternalRef（按命名空间前缀推测库名），回填 FunctionSymbol::callees。
+   - process_includes：解析 includes 关系，将文件名通过 resolve_include_file 转换为 FileSymbol ID，生成 IncludeEdge。
+4. 调用 resolve_composite_base_classes，将基类名称解析为 Symbol ID，生成 INHERITS 类型依赖边。
+5. 调用 fill_reverse_references，遍历所有 SymbolRef，填充被引用符号的 references 列表。
+6. 返回 AnalysisContext。
 
 ##### 依赖的数据结构
 - 输入接口数据：std::vector<FileParseResult>
@@ -1156,11 +1195,11 @@ public:
 | void bfs_traverse(uint32_t start_id, int max_depth, AnalysisContext& ctx, std::vector<CallEdge>& edges) | 广度优先遍历调用关系，受深度限制 |
 
 ##### 主流程步骤
-1. 定位入口函数的 Symbol ID（通过完全限定名或短名称匹配）。若未找到则抛出异常。
-2. 调用 build_call_graph 从入口开始 BFS 遍历，生成 CallEdge 并填充 ctx.call_edges。
+1. 定位入口函数的 Symbol ID（完全限定名 → 短名称匹配）。若未找到则记录警告，构建完整调用图（不按入口过滤）。
+2. 调用 compute_fan_in / compute_fan_out 基于 **完整调用边** 统计扇入扇出（在 BFS 替换前执行，确保统计覆盖所有边）。
 3. 调用 build_include_graph 验证 IncludeEdge 有效性并统计文件被包含热度。
-4. 调用 build_type_dependency_graph 分析类型之间的包含和继承关系，生成 TypeDependencyEdge。
-5. 分别调用 compute_fan_in 和 compute_fan_out，基于 CallEdge 统计每个函数的扇入和扇出，回填到对应的 FunctionSymbol 中。
+4. 调用 build_type_dependency_graph 分析字段类型和继承关系，生成 TypeDependencyEdge。
+5. 调用 build_call_graph 从入口开始 BFS 遍历，生成以入口函数为中心的调用子图，**替换** ctx.call_edges（深度由 -d 参数控制，替换前已备份扇入扇出数据）。
 
 ##### 依赖的数据结构
 - 输入输出核心数据：AnalysisContext
@@ -1196,17 +1235,18 @@ public:
 
 | 函数签名 | 功能 |
 | :--- | :--- |
-| int compute_cyclomatic_complexity(const FunctionSymbol& func) | 基于函数的分支节点数计算圈复杂度（分支数 + 1） |
-| FileStats compute_file_stats(const FileSymbol& file, const AnalysisContext& ctx) | 聚合文件级统计（总行数、代码行数、注释行数、复杂度总和） |
+| int compute_cyclomatic_complexity(const FunctionSymbol& func) | 基于函数的分支节点数计算圈复杂度（branch_count + 1）|
+| FileStats compute_file_stats(const FileSymbol& file, const AnalysisContext& ctx) | 聚合文件级统计（总行数、代码行数、复杂度总和）|
 | std::vector<CircularInclude> detect_circular_includes(const std::vector<IncludeEdge>& edges, int file_count) | 使用 Tarjan 算法检测有向图中的强连通分量，报告循环包含 |
-| std::vector<FunctionStats> compute_function_stats(const AnalysisContext& ctx) | 汇总所有函数的扇入、扇出、圈复杂度 |
-| void compute_hotspots(AnalysisStats& stats) | 对文件和函数按指标排序，计算归一化热力值用于渲染着色 |
+| std::vector<FunctionStats> compute_function_stats(const AnalysisContext& ctx) | 汇总所有函数的扇入、扇出、圈复杂度；回填圈复杂度到 FunctionSymbol |
+| void compute_hotspots(AnalysisStats& stats) | 对函数统计按扇入（被调用次数）降序排序 |
+| void tarjan_dfs(...) | Tarjan 强连通分量递归 DFS 内部函数 |
 
 ##### 主流程步骤
-1. 遍历 ctx.files，对每个文件调用 compute_file_stats，填充 AnalysisStats::file_stats。
-2. 遍历 ctx.functions，对每个函数获取其扇入扇出（已在 GraphBuilder 中计算并回填），并计算圈复杂度，汇总为 FunctionStats 填充 AnalysisStats::function_stats。
-3. 调用 detect_circular_includes，对 include_edges 构成的有向图运行 Tarjan 强连通分量算法，将大小大于 1 的环路报告为 CircularInclude。
-4. 调用 compute_hotspots，对文件和函数按指标（代码行数/复杂度/被调用次数）排序并计算归一化热力值。
+1. 遍历 ctx.files，对每个文件调用 compute_file_stats（总行数、代码行数、复杂度总和），填充 AnalysisStats::file_stats。
+2. 调用 compute_function_stats：遍历 ctx.functions，获取已在 GraphBuilder 中回填的扇入扇出，计算圈复杂度（branch_count + 1），回填到 FunctionSymbol，汇总为 FunctionStats 列表。
+3. 调用 detect_circular_includes，对 include_edges 有向图运行 Tarjan SCC 算法，大小 > 1 的强连通分量报告为 CircularInclude。
+4. 调用 compute_hotspots，按扇入降序排序函数统计（供报告热力图前 20 条呈现）。
 5. 返回完整的 AnalysisStats。
 
 ##### 依赖的数据结构
@@ -1249,19 +1289,24 @@ public:
 | std::string load_template() | 加载内嵌的 HTML 骨架模板字符串（C++ string literal）|
 | json build_json(const std::vector<SymbolMetadata>& symbols, const AnalysisStats& stats, const AnalysisContext& ctx) | 构建完整的 JSON 数据对象 |
 | json convert_call_graph(const std::vector<CallEdge>& edges, const std::vector<Symbol>& symbols) | 将调用边转换为 Cytoscape.js nodes/edges 格式 |
-| json convert_include_graph(const std::vector<IncludeEdge>& edges, const std::vector<FileSymbol>& files) | 将包含边转换为 Cytoscape.js nodes/edges 格式 |
-| json convert_type_graph(const std::vector<TypeDependencyEdge>& edges, const std::vector<CompositeSymbol>& composites) | 将类型依赖边转换为 Cytoscape.js nodes/edges 格式 |
+| json convert_include_graph(const std::vector<IncludeEdge>& edges, const std::vector<FileSymbol>& files, const std::vector<Symbol>& symbols) | 将包含边转换为 Cytoscape.js nodes/edges 格式 |
+| json convert_type_graph(const std::vector<TypeDependencyEdge>& edges, const std::vector<CompositeSymbol>& composites, const std::vector<Symbol>& symbols) | 将类型依赖边转换为 Cytoscape.js nodes/edges 格式 |
 | json build_hotspots(const AnalysisStats& stats) | 构建热力图数据（文件和函数的热力值及颜色映射） |
 | json build_anomalies(const AnalysisStats& stats) | 构建异常检测结果数据（循环包含等） |
+| std::string find_symbol_name(uint32_t id, const std::vector<Symbol>& symbols) | 根据 Symbol ID 查找名称 |
 
 ##### 主流程步骤
-1. 调用 load_template 获取内嵌的 HTML 骨架字符串。
+1. 调用 load_template 获取内嵌的 HTML 骨架字符串（定义在 Reporter.cpp 中，含 Inja 占位符 `{{ cytoscape_js }}` / `{{ data_json }}` / `{{ bridge_js }}`）。
 2. 调用 build_json 将所有输入数据组装为单一 JSON 对象：
-   - 顶层包含 metadata（项目名、文件数、函数数、生成时间）、symbols、call_graph、include_graph、type_graph、hotspots、anomalies。
-   - 各图数据通过 convert_* 函数转换为 Cytoscape.js 兼容的 { nodes: [...], edges: [...] } 格式。
-   - 热力图和异常数据分别通过 build_hotspots 和 build_anomalies 构建。
-3. 使用 Inja 模板引擎，将 JSON 数据和 Cytoscape.js/桥接脚本注入到模板占位符中。
-4. 返回 HTMLReport，包含完整 HTML 字符串和输出路径。
+   - metadata：项目名、文件数、函数数、C/C++ 编译器、运行命令、生成时间。
+   - symbols：含函数签名信息（return_type、parameters、is_virtual/is_static/is_inline）。
+   - composites：结构体/类的字段信息（name、type、access）。
+   - call_graph / include_graph / type_graph：通过 convert_* 函数转换。
+   - hotspots / anomalies：分别通过 build_hotspots 和 build_anomalies 构建。
+   - external_refs：外部符号引用列表（caller_name、callee_name、推测的 library）。
+   - stats：文件统计和函数统计（供前端直接渲染）。
+3. 使用 Inja 模板引擎（`inja::Environment::render`）将 JSON 数据、Cytoscape.js 库、桥接 JS 注入模板占位符。
+4. 返回 HTMLReport，包含完整 HTML 字符串。
 
 ##### 依赖的数据结构
 - 输入接口数据：std::vector<SymbolMetadata>、AnalysisStats
