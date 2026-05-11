@@ -2,13 +2,13 @@
 
 > 首次提交: 2026-04-27
 > 代码重组织: 2026-05-02 (21251c3)
-> 最近更新: 2026-05-03
+> 最近更新: 2026-05-11
 
 ---
 
 ## 2026-05-03 修改汇总
 
-共 **15 个提交**，涉及 **15 个文件**，新增 **2442 行**，删除 **1879 行**。
+共 **20 个提交**，涉及 **25 个文件**，新增 **2645 行**，删除 **2072 行**。
 
 ### 一、核心分析引擎改进
 
@@ -140,20 +140,51 @@
 
 ---
 
-## 文件变更总览（2026-05-03）
+### 七、2026-05-03 及后续补录
+
+#### 16. ParserFrontend visit_* 迁移自由函数到类方法
+- **提交**: `52d8ec5`
+- **文件**: ParserFrontend.cpp/.h, todo.md
+- **内容**: 所有 visit_* 成员方法从空桩改为实际逻辑，移除文件内静态自由函数；头文件 void* 改用 TSNode 类型，traverse_cst 新增 current_func 参数。
+
+#### 17. Reporter 改用 Inja 模板引擎替代手动字符串替换
+- **提交**: `1b4e0a7`
+- **文件**: Reporter.cpp, todo.md
+- **内容**: 模板占位符从硬编码 `find+replace` 改为 Inja 语法（`{{ var_name }}`），`generate()` 使用 `inja::Environment::render()` 渲染。
+
+#### 18. HTML 节点圆角矩形 + 文件名显示 + 选中色 #D5EE2E
+- **提交**: `a634991`
+- **文件**: Reporter.cpp, cytoscape_bridge.js, template.html
+- **内容**: 节点改为圆角矩形，标签显示"函数名\n(文件名)"，扇入/扇出改为"被调用/调用"，选中边框色和信息框关联色统一为 #D5EE2E，启用 text-wrap 多行标签。
+
+#### 19. Doxygen 注释提取 + HTML 节点信息展示注释 + 布局优化
+- **提交**: `61d5771`
+- **文件**: ParserFrontend.cpp/.h, DataTypes.h, Indexer.cpp, Reporter.cpp, template.html, cytoscape_bridge.js, test_project 测试文件（8 个）, 设计规格文档
+- **内容**: ParserFrontend 提取 Doxygen 注释（`///` 或 `/** */`），comment 字段贯穿 RawSymbol → FunctionSymbol/CompositeSymbol；节点选中时信息框显示完整注释；侧边栏移至右侧，折叠按钮置于 canvas 右上角；节点信息框移至左上角，#D5EE2E 边框关联。
+
+#### 20. 添加 .gitignore，停止跟踪 .html 文件
+- **提交**: `88ac359`
+- **文件**: .gitignore（新文件）
+- **内容**: 创建 `.gitignore` 忽略所有 `*.html` 文件，从 Git 索引中移除已跟踪的 4 个 `.html` 文件，保持磁盘文件不变。
+
+---
+
+## 文件变更总览（2026-05-11）
 
 | 文件 | 变更类型 | 说明 |
 |------|---------|------|
-| `Src/Parser/ParserFrontend.cpp` | 576 行改动 | AST 分支统计、字段/签名提取、行数统计 |
-| `Src/Parser/ParserFrontend.h` | 51 行改动 | void*→TSNode, 新增方法声明 |
+| `Src/Parser/ParserFrontend.cpp` | 1013 行改动 | AST 分支统计、字段/签名提取、行数统计、visit_* 迁移、Doxygen 注释提取 |
+| `Src/Parser/ParserFrontend.h` | 102 行改动 | void*→TSNode, 新增方法声明、current_func 参数 |
 | `Src/CLI/CLI.cpp` | 87 行改动 | --help 增强、-o 默认值、compiler 检测、command_line |
-| `Src/Common/DataTypes.h` | 18 行新增 | ExternalRef, branch_count, lines 字段, command_line |
+| `Src/Common/DataTypes.h` | 21 行新增 | ExternalRef, branch_count, lines 字段, command_line, comment 字段 |
 | `Src/GraphBuilder/GraphBuilder.cpp` | 69 行改动 | build_include_graph 实现, BFS depth fix |
-| `Src/Indexer/Indexer.cpp` | 22 行改动 | 外部符号收集, 行数回填, 目录过滤 |
+| `Src/Indexer/Indexer.cpp` | 24 行改动 | 外部符号收集, 行数回填, 目录过滤, comment 映射 |
 | `Src/Analyzer/Analyzer.cpp` | 23 行改动 | 新圈复杂度计算, 清理空循环 |
-| `Src/Reporter/Reporter.cpp` | 119 行改动 | 字段/签名/外部引用序列化 |
-| `Src/Template/template.html` | 20 行改动 | 垂直布局, 侧边栏折叠, 大图降级, 命令参数显示 |
+| `Src/Reporter/Reporter.cpp` | 233 行改动 | Inja 模板引擎、字段/签名/外部引用/comment 序列化、节点 label 格式 |
+| `Src/Template/template.html` | 62 行改动 | 垂直布局, 侧边栏折叠, 大图降级, 命令参数显示, 信息框位置/样式 |
+| `Src/Template/cytoscape_bridge.js` | 42 行改动 | 圆角矩形、多行标签、选中色、侧边栏位置 |
 | `deploy.sh` | **新文件** 131 行 | 自动部署/环境检测脚本 |
 | `build.sh` | 2 行改动 | 构建路径提示同步 |
 | `Src/CMakeLists.txt` | 3 行新增 | 输出目录分离 |
-| `Doc/Code_Visualization_Tool_Design_Spec.md` | 2778 + 398 行改动 | 设计规范同步（两轮） |
+| `Doc/Code_Visualization_Tool_Design_Spec.md` | 2778 + 417 行改动 | 设计规范同步（两轮 + Doxygen 同步） |
+| `.gitignore` | **新文件** 1 行 | 忽略所有 *.html 文件 |
