@@ -12,6 +12,12 @@
     // 当节点数量超过 1000 时启用 WebGL 渲染降级（满足 SR_4 需求）
     const WEBGL_THRESHOLD = 1000;
 
+    // 调用图懒展开状态
+    let isLazyMode = false;
+    let fullGraphData = null;
+    let visibleNodeIds = new Set();
+    let expandedNodeIds = new Set();
+
     // 颜色映射：根据热力值从蓝到红
     function heatColor(value) {
         const r = Math.round(value * 220 + 35);
@@ -98,6 +104,187 @@
         return elements;
     }
 
+    // 初始化调用图懒加载模式：仅显示入口节点，点击后展开下一级
+    function initCallGraphLazy() {
+        isLazyMode = true;
+        fullGraphData = data.call_graph || { nodes: [], edges: [] };
+        visibleNodeIds = new Set();
+        expandedNodeIds = new Set();
+
+        const entryId = data.metadata && data.metadata.entry_function_id;
+        if (!entryId || !fullGraphData.nodes.length) {
+            // 无入口函数时回退到全量显示（仍扫描并标记叶节点灰色）
+            isLazyMode = false;
+            initCytoscape(buildElements(fullGraphData, data.symbols || [], data.stats || {}));
+            if (cy) markDeadEndNodes();
+            return;
+        }
+
+        // 为入口节点构建 symbol/stats 查找表
+        const symbolMap = {};
+        (data.symbols || []).forEach(s => { symbolMap[s.symbol_id] = s; });
+        const statsMap = {};
+        if (data.stats && data.stats.function_stats) {
+            data.stats.function_stats.forEach(f => { statsMap[f.function_id] = f; });
+        }
+
+        const sym = symbolMap[entryId] || {};
+        const fstat = statsMap[entryId] || {};
+        const maxFanIn = data.stats && data.stats.maxFanIn || 1;
+        const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
+        const kind = sym.kind || 'FUNCTION';
+        let label = sym.name || String(entryId);
+        const fname = (sym.file_path || '').split('/').pop();
+        if (fname) label += '\n(' + fname + ')';
+
+        const elements = [{
+            group: 'nodes',
+            data: {
+                id: String(entryId),
+                label: label,
+                kind: kind,
+                shape: nodeShape(kind),
+                file: sym.file_path || '',
+                line: sym.line || 0,
+                fan_in: fstat.fan_in || 0,
+                fan_out: fstat.fan_out || 0,
+                complexity: fstat.cyclomatic_complexity || 0,
+                heat: heatVal,
+                comment: sym.comment || '',
+                isEntry: true
+            }
+        }];
+
+        visibleNodeIds.add(String(entryId));
+        initCytoscape(elements);
+
+        // 若入口函数无下级调用，标记灰色边框
+        const hasEntryOutgoing = fullGraphData.edges.some(e => String(e.source_id) === String(entryId));
+        if (!hasEntryOutgoing && cy) {
+            cy.getElementById(String(entryId)).data('isDeadEnd', true);
+        }
+    }
+
+    // 展开节点的下一级调用关系
+    function expandNode(nodeId) {
+        if (!isLazyMode || expandedNodeIds.has(nodeId) || !fullGraphData) return;
+
+        // 查找从该节点出发的未显示边
+        const newEdges = fullGraphData.edges.filter(e =>
+            String(e.source_id) === nodeId && !visibleNodeIds.has(String(e.target_id))
+        );
+        if (newEdges.length === 0) {
+            const expandEl = document.getElementById('ni-expand');
+            if (expandEl && expandedNodeIds.has(nodeId)) expandEl.textContent = '已展开';
+            return;
+        }
+
+        expandedNodeIds.add(nodeId);
+
+        // 收集新目标节点 ID
+        const calleeIds = new Set();
+        newEdges.forEach(e => calleeIds.add(String(e.target_id)));
+
+        // 构建 symbol/stats 查找表
+        const symbolMap = {};
+        (data.symbols || []).forEach(s => { symbolMap[s.symbol_id] = s; });
+        const statsMap = {};
+        if (data.stats && data.stats.function_stats) {
+            data.stats.function_stats.forEach(f => { statsMap[f.function_id] = f; });
+        }
+        const maxFanIn = data.stats && data.stats.maxFanIn || 1;
+
+        // 构建新增节点和边的 elements
+        const newElements = [];
+        calleeIds.forEach(id => {
+            if (visibleNodeIds.has(id)) return;
+            visibleNodeIds.add(id);
+
+            const nodeData = fullGraphData.nodes.find(n => String(n.id) === id);
+            const sym = symbolMap[parseInt(id)] || {};
+            const fstat = statsMap[parseInt(id)] || {};
+            const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
+            const kind = sym.kind || (nodeData ? nodeData.type : 'FUNCTION');
+            let label = (nodeData && nodeData.label) || sym.name || id;
+            if (kind !== 'FILE_ENTITY') {
+                const fname = (sym.file_path || '').split('/').pop();
+                if (fname) label += '\n(' + fname + ')';
+            }
+
+            newElements.push({
+                group: 'nodes',
+                data: {
+                    id: id,
+                    label: label,
+                    kind: kind,
+                    shape: nodeShape(kind),
+                    file: sym.file_path || '',
+                    line: sym.line || 0,
+                    fan_in: fstat.fan_in || 0,
+                    fan_out: fstat.fan_out || 0,
+                    complexity: fstat.cyclomatic_complexity || 0,
+                    heat: heatVal,
+                    comment: sym.comment || ''
+                }
+            });
+        });
+
+        newEdges.forEach((e, idx) => {
+            newElements.push({
+                group: 'edges',
+                data: {
+                    id: `e-lazy-${idx}-${nodeId}`,
+                    source: String(e.source_id),
+                    target: String(e.target_id),
+                    relation: e.relation || 'CALLS',
+                    weight: e.weight || 1
+                }
+            });
+        });
+
+        if (newElements.length === 0) return;
+
+        // 增量添加到当前图并重新布局（保持视角不变）
+        cy.add(newElements);
+
+        // 标记无下级展开的节点为灰色边框
+        calleeIds.forEach(id => {
+            const hasOutgoing = fullGraphData.edges.some(e => String(e.source_id) === id);
+            if (!hasOutgoing) {
+                cy.getElementById(id).data('isDeadEnd', true);
+            }
+        });
+
+        // 以父节点为中心，固定半径扇形展开子节点
+        const parentPos = cy.getElementById(nodeId).position();
+        const radius = 150;
+        const calleeArray = Array.from(calleeIds);
+        const count = calleeArray.length;
+        const arcAngle = Math.PI * 0.6; // 108° 扇形
+        const startAngle = Math.PI / 2 - arcAngle / 2;
+
+        calleeArray.forEach((id, i) => {
+            const angle = startAngle + arcAngle * i / Math.max(count - 1, 1);
+            const node = cy.getElementById(id);
+            if (node.length) {
+                node.position({
+                    x: parentPos.x + radius * Math.cos(angle),
+                    y: parentPos.y + radius * Math.sin(angle)
+                });
+            }
+        });
+    }
+
+    // 在全量显示的图中扫描并标记叶节点（无出边 → 灰色边框）
+    function markDeadEndNodes() {
+        if (!cy || !fullGraphData) return;
+        cy.nodes().forEach(n => {
+            const nid = n.id();
+            const hasOutgoing = fullGraphData.edges.some(e => String(e.source_id) === nid);
+            if (!hasOutgoing) n.data('isDeadEnd', true);
+        });
+    }
+
     // 初始化 Cytoscape 图
     function initCytoscape(elements) {
         const container = document.getElementById('cy');
@@ -142,6 +329,23 @@
                         }
                     },
                     {
+                        selector: 'node[isDeadEnd]',
+                        style: {
+                            'border-color': '#555555',
+                            'border-width': 1,
+                            'border-style': 'solid'
+                        }
+                    },
+                    {
+                        selector: 'node[isEntry]',
+                        style: {
+                            'border-width': 3,
+                            'border-color': '#FFD700',
+                            'color': '#FFD700',
+                            'font-weight': 'bold'
+                        }
+                    },
+                    {
                         selector: 'node:selected',
                         style: {
                             'border-width': 3,
@@ -157,7 +361,7 @@
                 }
             });
 
-            // 节点点击：显示详情
+            // 节点点击：显示详情 + 懒展开
             cy.on('tap', 'node', function(evt) {
                 const node = evt.target;
                 const d = node.data();
@@ -172,6 +376,28 @@
                 const nc = document.getElementById('ni-comment');
                 if (d.comment) { nc.textContent = d.comment; nc.style.display = 'block'; }
                 else { nc.style.display = 'none'; }
+
+                // 懒展开模式：显示展开状态
+                const expandRow = document.getElementById('ni-expand-row');
+                const expandEl = document.getElementById('ni-expand');
+                if (isLazyMode && fullGraphData) {
+                    if (expandedNodeIds.has(node.id())) {
+                        expandEl.textContent = '已展开';
+                    } else {
+                        const calleeCount = fullGraphData.edges.filter(e =>
+                            String(e.source_id) === node.id()
+                        ).length;
+                        expandEl.textContent = calleeCount > 0 ? calleeCount + ' 个被调用函数' : '无调用关系';
+                    }
+                    expandRow.style.display = 'flex';
+                } else if (expandRow) {
+                    expandRow.style.display = 'none';
+                }
+
+                // 展开下一级调用关系
+                if (isLazyMode) {
+                    expandNode(node.id());
+                }
             });
 
             // 背景点击：隐藏节点详情
@@ -209,17 +435,21 @@
         canvasContainer.style.display = 'block';
         sidebar.style.display = 'block';
 
-        let graphData;
-        switch (tab) {
-            case 'call':    graphData = data.call_graph;    break;
-            case 'include': graphData = data.include_graph; break;
-            case 'type':    graphData = data.type_graph;    break;
-            default:        graphData = data.call_graph;
-        }
-
         if (cy) { cy.destroy(); cy = null; }
-        const elements = buildElements(graphData, data.symbols || [], data.stats || {});
-        initCytoscape(elements);
+
+        if (tab === 'call') {
+            initCallGraphLazy();
+        } else {
+            isLazyMode = false;
+            let graphData;
+            switch (tab) {
+                case 'include': graphData = data.include_graph; break;
+                case 'type':    graphData = data.type_graph;    break;
+                default:        graphData = data.call_graph;
+            }
+            const elements = buildElements(graphData, data.symbols || [], data.stats || {});
+            initCytoscape(elements);
+        }
     };
 
     // 重置布局
@@ -326,13 +556,8 @@
     document.addEventListener('DOMContentLoaded', function() {
         updateMeta();
         renderSidebar();
-        // 默认显示调用图
-        const elements = buildElements(
-            data.call_graph || { nodes: [], edges: [] },
-            data.symbols || [],
-            data.stats || {}
-        );
-        initCytoscape(elements);
+        // 默认显示调用图（懒加载模式）
+        initCallGraphLazy();
     });
 
 })();

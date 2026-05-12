@@ -15,6 +15,7 @@ void GraphBuilder::build(AnalysisContext& ctx, const std::string& entry_function
 
     // 1. 定位入口函数
     uint32_t entry_id = find_entry_id(ctx, entry_function);
+    ctx.entry_function_id = entry_id;
     if (entry_id == 0) {
         spdlog::warn("未找到入口函数 '{}', 将构建完整调用图", entry_function);
     }
@@ -120,6 +121,9 @@ void GraphBuilder::build_call_graph(AnalysisContext& ctx, uint32_t entry_id, int
     if (entry_id == 0) {
         return;
     }
+
+    // 保存完整调用边，供 HTML 报告前端按需展开（在 BFS 剪枝之前）
+    ctx.full_call_edges = ctx.call_edges;
 
     // BFS 遍历，生成从入口函数出发的调用子图
     std::vector<CallEdge> bfs_edges;

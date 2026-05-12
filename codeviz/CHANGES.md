@@ -2,7 +2,7 @@
 
 > 首次提交: 2026-04-27
 > 代码重组织: 2026-05-02 (21251c3)
-> 最近更新: 2026-05-11
+> 最近更新: 2026-05-12
 
 ---
 
@@ -169,7 +169,27 @@
 
 ---
 
-## 文件变更总览（2026-05-11）
+### 八、2026-05-12 — 调用图按需展开（dev 分支）
+
+共 **4 个提交**，涉及 **5 个文件**。
+
+#### 1. 调用图懒展开 + 叶节点灰色 + 入口节点高亮
+- **文件**: DataTypes.h, GraphBuilder.cpp, Reporter.cpp, cytoscape_bridge.js, template.html
+- **后端改动**:
+  - `AnalysisContext` 新增 `entry_function_id` 和 `full_call_edges`，GraphBuilder 在 BFS 剪枝前保存完整调用边
+  - Reporter 序列化完整调用图 + 入口 ID 到 JSON 元数据
+- **前端改动**:
+  - **入口节点**: 页面打开仅显示入口函数节点，函数名金色 `#FFD700` 加粗高亮，边框金色
+  - **按需展开**: 单击节点后从完整数据中取出下一级边/目标节点，增量 `cy.add()` 添加到图中
+  - **径向定位**: 子节点以父节点为中心，固定半径 150px 扇形展开（108° 向下弧），不再全图 dagre 重排
+  - **叶节点灰色**: 无下级调用的节点标记 `isDeadEnd` 属性，边框灰色 `#555555`
+  - **高亮覆盖**: 节点选中时显示 `#D5EE2E` 绿色高亮，取消选中恢复原色（灰色或红色）
+  - **回退模式**: 当 `-e` 指定的入口函数不存在时，全量显示调用图但仍扫描所有节点标记叶节点灰色
+- **Bug 修复**: 修复 Cytoscape.js 选择器 `[attr="true"]` 因布尔值 `true != "true"` 样式不匹配的问题，改用存在性选择器 `[attr]`
+
+---
+
+## 文件变更总览（2026-05-12）
 
 | 文件 | 变更类型 | 说明 |
 |------|---------|------|
@@ -188,3 +208,8 @@
 | `Src/CMakeLists.txt` | 3 行新增 | 输出目录分离 |
 | `Doc/Code_Visualization_Tool_Design_Spec.md` | 2778 + 417 行改动 | 设计规范同步（两轮 + Doxygen 同步） |
 | `.gitignore` | **新文件** 1 行 | 忽略所有 *.html 文件 |
+| `Src/Common/DataTypes.h` | 4 行新增 | entry_function_id, full_call_edges 字段 |
+| `Src/GraphBuilder/GraphBuilder.cpp` | 3 行改动 | 保存完整边和入口 ID |
+| `Src/Reporter/Reporter.cpp` | 大量改动 | BRIDGE_JS 重写：懒展开/径向定位/叶节点灰色/入口高亮 |
+| `Src/Template/cytoscape_bridge.js` | 大量改动 | 同步 Reporter.cpp BRIDGE_JS 逻辑 |
+| `Src/Template/template.html` | 1 行新增 | ni-expand-row 节点信息行 |

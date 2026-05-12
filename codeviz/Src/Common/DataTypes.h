@@ -293,6 +293,12 @@ struct AnalysisContext {
     // 命令行参数（用于报告展示）
     std::string command_line;
 
+    // 入口函数 Symbol ID（由 GraphBuilder 填充，Reporter 序列化到前端）
+    uint32_t entry_function_id = 0;
+
+    // BFS 剪枝前的完整调用边（由 GraphBuilder 保存，供前端按需展开）
+    std::vector<CallEdge> full_call_edges;
+
     // 外部符号引用
     std::vector<ExternalRef> external_refs;
 

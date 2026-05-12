@@ -95,6 +95,7 @@ static const char* HTML_TEMPLATE = R"HTML(
                 <div class="kv"><span class="k">被调用</span><span id="ni-fanin">-</span></div>
                 <div class="kv"><span class="k">调用</span><span id="ni-fanout">-</span></div>
                 <div class="kv"><span class="k">圈复杂度</span><span id="ni-cc">-</span></div>
+                <div class="kv" id="ni-expand-row" style="display:none;"><span class="k">可展开</span><span id="ni-expand">-</span></div>
                 <div id="ni-comment" style="margin-top:8px;padding:6px;background:#0f3460;border-radius:4px;font-size:11px;color:#ccc;display:none;white-space:pre-wrap;max-height:120px;overflow-y:auto;"></div>
             </div>
         </div>
@@ -127,18 +128,18 @@ static const char* BRIDGE_JS = R"BRIDGE(
 'use strict';
 var data=window.CODEVIZ_DATA;
 var cy=null;
+var currentTab='call';
 var WEBGL_THRESHOLD=1000;
+/* lazy expansion state */
+var isLazyMode=false,fullGraphData=null,visibleNodeIds=new Set(),expandedNodeIds=new Set();
 function heatColor(v){var r=Math.round(v*220+35),g=Math.round((1-v)*150+30),b=Math.round((1-v)*180+30);return'rgb('+r+','+g+','+b+')';}
-function nodeShape(k){switch(k){case'FUNCTION':case'STRUCT':case'CLASS':case'FILE_ENTITY':return'round-rectangle';default:return'round-rectangle';}}
+function nodeShape(k){return'round-rectangle';}
 function buildElements(graphData,symbols,stats){
-var elements=[];var symbolMap={};symbols.forEach(function(s){symbolMap[s.symbol_id]=s;});
+var elements=[],symbolMap={};symbols.forEach(function(s){symbolMap[s.symbol_id]=s;});
 var statsMap={};if(stats&&stats.function_stats){stats.function_stats.forEach(function(f){statsMap[f.function_id]=f;});}
-var nodeSet=new Set();var maxFanIn=1;
-if(stats&&stats.function_stats){stats.function_stats.forEach(function(f){if(f.fan_in>maxFanIn)maxFanIn=f.fan_in;});}
-(graphData.nodes||[]).forEach(function(n){
+var nodeSet=new Set();(graphData.nodes||[]).forEach(function(n){
 if(nodeSet.has(n.id))return;nodeSet.add(n.id);
-var sym=symbolMap[n.id]||{};var fstat=statsMap[n.id]||{};
-var heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
+var sym=symbolMap[n.id]||{},fstat=statsMap[n.id]||{},maxFanIn=stats&&stats.maxFanIn||1,heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
 var kind=sym.kind||n.type||'FUNCTION';
 var label=n.label||sym.name||String(n.id);
 if(kind!=='FILE_ENTITY'){var fname=(sym.file_path||'').split('/').pop();if(fname)label+='\n('+fname+')';}
@@ -146,6 +147,39 @@ elements.push({group:'nodes',data:{id:String(n.id),label:label,kind:kind,shape:n
 });
 (graphData.edges||[]).forEach(function(e,idx){elements.push({group:'edges',data:{id:'e'+idx,source:String(e.source_id),target:String(e.target_id),relation:e.relation||'CALLS',weight:e.weight||1}});});
 return elements;}
+function initCallGraphLazy(){
+var entryId=data.metadata&&data.metadata.entry_function_id;fullGraphData=data.call_graph||{nodes:[],edges:[]};
+visibleNodeIds=new Set();expandedNodeIds=new Set();
+if(!entryId||!fullGraphData.nodes.length){isLazyMode=false;initCytoscape(buildElements(fullGraphData,data.symbols||[],data.stats||{}));if(cy)markDeadEndNodes();return;}
+isLazyMode=true;var symbolMap={};(data.symbols||[]).forEach(function(s){symbolMap[s.symbol_id]=s;});
+var statsMap={};if(data.stats&&data.stats.function_stats){data.stats.function_stats.forEach(function(f){statsMap[f.function_id]=f;});}
+var sym=symbolMap[entryId]||{},fstat=statsMap[entryId]||{},maxFanIn=data.stats&&data.stats.maxFanIn||1,heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
+var kind=sym.kind||'FUNCTION',label=sym.name||String(entryId),fname=(sym.file_path||'').split('/').pop();
+if(fname)label+='\n('+fname+')';
+visibleNodeIds.add(String(entryId));initCytoscape([{group:'nodes',data:{id:String(entryId),label:label,kind:kind,shape:'round-rectangle',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||'',isEntry:true}}]);
+var hasEntryOutgoing=fullGraphData.edges.some(function(e){return String(e.source_id)===String(entryId);});if(!hasEntryOutgoing&&cy)cy.getElementById(String(entryId)).data('isDeadEnd',true);}
+function expandNode(nodeId){
+if(!isLazyMode||expandedNodeIds.has(nodeId)||!fullGraphData)return;
+var newEdges=fullGraphData.edges.filter(function(e){return String(e.source_id)===nodeId&&!visibleNodeIds.has(String(e.target_id));});
+if(!newEdges.length){var el=document.getElementById('ni-expand');if(el&&expandedNodeIds.has(nodeId))el.textContent='已展开';return;}
+expandedNodeIds.add(nodeId);
+var calleeIds=new Set();newEdges.forEach(function(e){calleeIds.add(String(e.target_id));});
+var symbolMap={};(data.symbols||[]).forEach(function(s){symbolMap[s.symbol_id]=s;});
+var statsMap={};if(data.stats&&data.stats.function_stats){data.stats.function_stats.forEach(function(f){statsMap[f.function_id]=f;});}
+var maxFanIn=data.stats&&data.stats.maxFanIn||1,newElements=[];
+calleeIds.forEach(function(id){
+if(visibleNodeIds.has(id))return;visibleNodeIds.add(id);
+var nd=fullGraphData.nodes.find(function(n){return String(n.id)===id;}),sym=symbolMap[parseInt(id)]||{},fstat=statsMap[parseInt(id)]||{},heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
+var kind=sym.kind||(nd?nd.type:'FUNCTION'),label=(nd&&nd.label)||sym.name||id;
+if(kind!=='FILE_ENTITY'){var fn=(sym.file_path||'').split('/').pop();if(fn)label+='\n('+fn+')';}
+newElements.push({group:'nodes',data:{id:id,label:label,kind:kind,shape:'round-rectangle',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||''}});
+});
+newEdges.forEach(function(e,idx){newElements.push({group:'edges',data:{id:'e-lazy-'+idx+'-'+nodeId,source:String(e.source_id),target:String(e.target_id),relation:e.relation||'CALLS',weight:e.weight||1}});});
+if(!newElements.length)return;cy.add(newElements);
+calleeIds.forEach(function(id){var hasOutgoing=fullGraphData.edges.some(function(e){return String(e.source_id)===id;});if(!hasOutgoing)cy.getElementById(id).data('isDeadEnd',true);});
+var parentPos=cy.getElementById(nodeId).position(),calleeArr=Array.from(calleeIds),cc=calleeArr.length,arc=Math.PI*0.6,start=Math.PI/2-arc/2,radius=150;
+calleeArr.forEach(function(id,i){var angle=start+arc*i/Math.max(cc-1,1),nd=cy.getElementById(id);if(nd.length)nd.position({x:parentPos.x+radius*Math.cos(angle),y:parentPos.y+radius*Math.sin(angle)});});}
+function markDeadEndNodes(){if(!cy||!fullGraphData)return;cy.nodes().forEach(function(n){var nid=n.id(),hasOut=fullGraphData.edges.some(function(e){return String(e.source_id)===nid;});if(!hasOut)n.data('isDeadEnd',true);});}
 function initCytoscape(elements){
 var container=document.getElementById('cy');if(!container)return;
 if(typeof cytoscape==='undefined'){container.innerHTML='<div style="padding:40px;color:#e94560;text-align:center;"><h3>Cytoscape.js 未加载</h3><p style="margin-top:8px;color:#aaa;font-size:13px;">本报告需要网络连接以加载 Cytoscape.js，或替换为离线版本</p></div>';return;}
@@ -155,23 +189,24 @@ if(isLarge&&notice){notice.style.display='block';notice.textContent='大图模�
 try{var opts={container:container,elements:elements,
 style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':isLarge?'9px':'11px','text-valign':'center','text-halign':'center','shape':'data(shape)','width':'label','height':'label','text-wrap':'wrap','padding':'6px','border-width':1,'border-color':'#e94560','background-color':'#16213e'}},
 {selector:'edge',style:{width:isLarge?1:1.5,'line-color':'#0f3460','target-arrow-color':'#e94560','target-arrow-shape':'triangle','curve-style':'bezier'}},
-{selector:'node:selected',style:{'border-width':3,'border-color':'#D5EE2E'}}],
+{selector:'node[isDeadEnd]',style:{'border-color':'#555555','border-width':1,'border-style':'solid'}},{selector:'node[isEntry]',style:{'border-width':3,'border-color':'#FFD700','color':'#FFD700','font-weight':'bold'}},{selector:'node:selected',style:{'border-width':3,'border-color':'#D5EE2E'}}],
 layout:{name:'cose',padding:20}};
 if(isLarge){opts.hideEdgesOnViewport=true;opts.motionBlur=true;opts.textEvents='no';opts.wheelSensitivity=0.5;}
 cy=cytoscape(opts);
-cy.on('tap','node',function(evt){var d=evt.target.data();document.getElementById('node-info').style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;var nc=document.getElementById('ni-comment');if(d.comment){nc.textContent=d.comment;nc.style.display='block';}else{nc.style.display='none';}});
+cy.on('tap','node',function(evt){var node=evt.target,d=node.data();document.getElementById('node-info').style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;var nc=document.getElementById('ni-comment');if(d.comment){nc.textContent=d.comment;nc.style.display='block';}else{nc.style.display='none';}
+var er=document.getElementById('ni-expand-row'),ee=document.getElementById('ni-expand');if(isLazyMode&&fullGraphData){if(expandedNodeIds.has(node.id())){ee.textContent='已展开';}else{var cc=fullGraphData.edges.filter(function(e){return String(e.source_id)===node.id();}).length;ee.textContent=cc>0?cc+' 个被调用函数':'无调用关系';}er.style.display='flex';}else if(er){er.style.display='none';}
+if(isLazyMode)expandNode(node.id());});
 cy.on('tap',function(evt){if(evt.target===cy)document.getElementById('node-info').style.display='none';});
 }catch(e){console.error('Cytoscape init failed:',e);}}
 window.switchTab=function(tab){
-document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});event.target.classList.add('active');
-var sp=document.getElementById('stats-panel');var cc=document.getElementById('canvas-container');var sb=document.getElementById('sidebar');
+currentTab=tab;document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});event.target.classList.add('active');
+var sp=document.getElementById('stats-panel'),cc=document.getElementById('canvas-container'),sb=document.getElementById('sidebar');
 if(tab==='stats'){sp.style.display='block';cc.style.display='none';sb.style.display='none';renderStats();return;}
 sp.style.display='none';cc.style.display='block';sb.style.display='block';
-var graphData=tab==='call'?data.call_graph:tab==='include'?data.include_graph:data.type_graph;
 if(cy){cy.destroy();cy=null;}
-initCytoscape(buildElements(graphData||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));};
+if(tab==='call'){initCallGraphLazy();}else{isLazyMode=false;var graphData=tab==='include'?data.include_graph:data.type_graph;initCytoscape(buildElements(graphData||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));}};
 window.resetLayout=function(){if(cy)cy.layout({name:'cose',padding:20}).run();};
-window.toggleSidebar=function(){var sb=document.getElementById('sidebar');sb.classList.toggle('collapsed');document.getElementById('toggle-sidebar').textContent=sb.classList.contains('collapsed')?'◀':'▶';setTimeout(function(){if(cy)cy.resize();},250);};
+window.toggleSidebar=function(){var sb=document.getElementById('sidebar');sb.classList.toggle('collapsed');var btn=document.getElementById('toggle-sidebar');if(btn)btn.textContent=sb.classList.contains('collapsed')?'◀':'▶';setTimeout(function(){if(cy)cy.resize();},250);};
 window.fitGraph=function(){if(cy)cy.fit();};
 window.filterSymbols=function(q){document.getElementById('symbol-list').querySelectorAll('li').forEach(function(li){li.style.display=li.textContent.toLowerCase().includes(q.toLowerCase())?'':'none';});};
 function renderSidebar(){var list=document.getElementById('symbol-list');list.innerHTML='';(data.symbols||[]).forEach(function(s){var li=document.createElement('li');li.textContent=s.name;li.title=s.qualified_name;li.onclick=function(){if(cy){var node=cy.getElementById(String(s.symbol_id));if(node.length){cy.animate({fit:{eles:node,padding:60},duration:400});node.select();}}};list.appendChild(li);});}
@@ -191,8 +226,8 @@ var anoList=document.getElementById('ano-list');var ano=data.anomalies||{};
 if(!(ano.circular_includes||[]).length){anoList.innerHTML='<p style="color:#4ade80;font-size:13px;">未检测到循环包含</p>';}
 else{(ano.circular_includes||[]).forEach(function(ci){var d=document.createElement('div');d.className='anomaly';d.textContent='循环包含: '+ci.file_cycle.join(' → ');anoList.appendChild(d);});}
 }
-function updateMeta(){var meta=data.metadata||{};document.getElementById('meta-info').textContent='项目: '+(meta.project_name||'-')+' | 生成时间: '+(meta.generated_at||'-');var cl=document.getElementById('cmd-line');if(cl&&meta.command_line){cl.textContent='运行命令: '+meta.command_line;cl.style.display='block';}}
-document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSidebar();initCytoscape(buildElements(data.call_graph||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));});
+function updateMeta(){var meta=data.metadata||{},mi=document.getElementById('meta-info');if(mi)mi.textContent='项目: '+(meta.project_name||'-')+' | 生成时间: '+(meta.generated_at||'-');var cl=document.getElementById('cmd-line');if(cl&&meta.command_line){cl.textContent='运行命令: '+meta.command_line;cl.style.display='block';}}
+document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSidebar();initCallGraphLazy();});
 })();
 )BRIDGE";
 
@@ -260,6 +295,7 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
         {"c_compiler", ctx.c_compiler},
         {"cxx_compiler", ctx.cxx_compiler},
         {"command_line", ctx.command_line.empty() ? "" : ctx.command_line},
+        {"entry_function_id", ctx.entry_function_id},
         {"generated_at", time_buf}
     };
 
@@ -337,8 +373,9 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
     }
     root["composites"] = comp_array;
 
-    // 调用图
-    root["call_graph"] = convert_call_graph(ctx.call_edges, ctx.symbols);
+    // 调用图（优先使用完整边数据，兼容旧数据流）
+    const auto& call_edges = !ctx.full_call_edges.empty() ? ctx.full_call_edges : ctx.call_edges;
+    root["call_graph"] = convert_call_graph(call_edges, ctx.symbols);
 
     // 包含图
     root["include_graph"] = convert_include_graph(ctx.include_edges, ctx.files, ctx.symbols);

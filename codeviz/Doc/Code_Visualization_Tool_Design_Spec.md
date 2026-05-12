@@ -789,12 +789,16 @@ struct AnalysisContext {
     
     // 图边数据
     std::vector<CallEdge> call_edges;
+    std::vector<CallEdge> full_call_edges; // BFS 剪枝前的完整调用边（前端按需展开用）
     std::vector<IncludeEdge> include_edges;
     std::vector<TypeDependencyEdge> type_edges;
     std::vector<SymbolRef> references;
 
     // 命令行参数（用于报告展示）
     std::string command_line;
+
+    // 入口函数 Symbol ID（由 GraphBuilder 填充，Reporter 序列化到前端）
+    uint32_t entry_function_id = 0;
 
     // 外部符号引用
     std::vector<ExternalRef> external_refs;
@@ -1163,7 +1167,7 @@ public:
 #### 4.3.6 图构建模块
 
 ##### 职责
-基于 `AnalysisContext` 中的全局符号表和引用关系，构建函数调用图、头文件包含图、类型依赖图，填充边数据到 `AnalysisContext` 中，同时支持按入口函数和深度过滤调用图，计算函数的扇入扇出统计。
+基于 `AnalysisContext` 中的全局符号表和引用关系，构建函数调用图、头文件包含图、类型依赖图，填充边数据到 `AnalysisContext` 中，同时支持按入口函数和深度过滤调用图，计算函数的扇入扇出统计。在 BFS 剪枝前将完整调用边保存至 `full_call_edges`，供 HTML 报告前端按需展开。
 
 ##### 对外接口
 
