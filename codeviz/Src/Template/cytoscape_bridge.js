@@ -6,10 +6,10 @@
     'use strict';
 
     const data = window.CODEVIZ_DATA;
-    let cy = null;
-    let currentTab = 'call';
+    let cy = null;          // 左侧调用图 Cytoscape 实例
+    let cySide = null;      // 右侧面板 Cytoscape 实例
+    let currentCard = 'include';
 
-    // 当节点数量超过 1000 时启用 WebGL 渲染降级（满足 SR_4 需求）
     const WEBGL_THRESHOLD = 1000;
 
     // 调用图懒展开状态
@@ -17,8 +17,8 @@
     let fullGraphData = null;
     let visibleNodeIds = new Set();
     let expandedNodeIds = new Set();
+    const expansionChildren = new Map();
 
-    // 颜色映射：根据热力值从蓝到红
     function heatColor(value) {
         const r = Math.round(value * 220 + 35);
         const g = Math.round((1 - value) * 150 + 30);
@@ -26,150 +26,110 @@
         return `rgb(${r},${g},${b})`;
     }
 
-    // 将符号类型映射到节点形状
-    function nodeShape(kind) {
-        switch (kind) {
-            case 'FUNCTION':
-            case 'STRUCT':
-            case 'CLASS':
-            case 'FILE_ENTITY': return 'round-rectangle';
-            default:            return 'round-rectangle';
-        }
-    }
+    function nodeShape(kind) { return 'round-rectangle'; }
 
-    // 构建当前视图的 Cytoscape elements
     function buildElements(graphData, symbols, stats) {
         const elements = [];
         const symbolMap = {};
         symbols.forEach(s => { symbolMap[s.symbol_id] = s; });
-
-        // 构建函数统计的快速索引
         const statsMap = {};
         if (stats && stats.function_stats) {
             stats.function_stats.forEach(f => { statsMap[f.function_id] = f; });
         }
-
-        // 添加节点
         const nodeSet = new Set();
         (graphData.nodes || []).forEach(n => {
             if (nodeSet.has(n.id)) return;
             nodeSet.add(n.id);
-
             const sym = symbolMap[n.id] || {};
             const fstat = statsMap[n.id] || {};
-
-            // 计算热力值（被调用次数越高越热）
             const maxFanIn = stats && stats.maxFanIn || 1;
             const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
-
             const kind = sym.kind || n.type || 'FUNCTION';
             let label = n.label || sym.name || String(n.id);
-            if (kind !== 'FILE_ENTITY') {
-                const fname = (sym.file_path || '').split('/').pop();
-                if (fname) label += '\n(' + fname + ')';
+            let fileType = '';
+            let fname = '';
+            if (kind === 'FILE_ENTITY') {
+                const fp = (sym.file_path || n.label || '').toLowerCase();
+                fileType = (fp.endsWith('.h') || fp.endsWith('.hpp') || fp.endsWith('.hxx')) ? 'header' : 'source';
+            } else {
+                fname = (sym.file_path || '').split('/').pop() || '';
             }
-
             elements.push({
                 group: 'nodes',
                 data: {
-                    id: String(n.id),
-                    label: label,
-                    kind: kind,
-                    shape: nodeShape(kind),
-                    file: sym.file_path || '',
-                    line: sym.line || 0,
-                    fan_in: fstat.fan_in || 0,
-                    fan_out: fstat.fan_out || 0,
+                    id: String(n.id), label, kind, shape: nodeShape(kind),
+                    file: sym.file_path || '', line: sym.line || 0,
+                    fan_in: fstat.fan_in || 0, fan_out: fstat.fan_out || 0,
                     complexity: fstat.cyclomatic_complexity || 0,
-                    heat: heatVal,
-                    comment: sym.comment || ''
+                    heat: heatVal, comment: sym.comment || '',
+                    fileType: fileType,
+                    fname: fname
                 }
             });
         });
-
-        // 添加边
         (graphData.edges || []).forEach((e, idx) => {
             elements.push({
                 group: 'edges',
                 data: {
-                    id: `e${idx}`,
-                    source: String(e.source_id),
-                    target: String(e.target_id),
-                    relation: e.relation || 'CALLS',
+                    id: `e${idx}`, source: String(e.source_id),
+                    target: String(e.target_id), relation: e.relation || 'CALLS',
                     weight: e.weight || 1
                 }
             });
         });
-
         return elements;
     }
 
-    // 初始化调用图懒加载模式：仅显示入口节点，点击后展开下一级
+    // === 左侧调用图（懒展开）===
     function initCallGraphLazy() {
         isLazyMode = true;
         fullGraphData = data.call_graph || { nodes: [], edges: [] };
         visibleNodeIds = new Set();
         expandedNodeIds = new Set();
+        expansionChildren.clear();
 
         const entryId = data.metadata && data.metadata.entry_function_id;
         if (!entryId || !fullGraphData.nodes.length) {
-            // 无入口函数时回退到全量显示（仍扫描并标记叶节点灰色）
             isLazyMode = false;
-            initCytoscape(buildElements(fullGraphData, data.symbols || [], data.stats || {}));
+            initCytoscape(buildElements(fullGraphData, data.symbols || [], data.stats || {}), 'cy-call');
             if (cy) markDeadEndNodes();
             return;
         }
 
-        // 为入口节点构建 symbol/stats 查找表
         const symbolMap = {};
         (data.symbols || []).forEach(s => { symbolMap[s.symbol_id] = s; });
         const statsMap = {};
         if (data.stats && data.stats.function_stats) {
             data.stats.function_stats.forEach(f => { statsMap[f.function_id] = f; });
         }
-
         const sym = symbolMap[entryId] || {};
         const fstat = statsMap[entryId] || {};
         const maxFanIn = data.stats && data.stats.maxFanIn || 1;
         const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
         const kind = sym.kind || 'FUNCTION';
         let label = sym.name || String(entryId);
-        const fname = (sym.file_path || '').split('/').pop();
-        if (fname) label += '\n(' + fname + ')';
-
-        const elements = [{
-            group: 'nodes',
-            data: {
-                id: String(entryId),
-                label: label,
-                kind: kind,
-                shape: nodeShape(kind),
-                file: sym.file_path || '',
-                line: sym.line || 0,
-                fan_in: fstat.fan_in || 0,
-                fan_out: fstat.fan_out || 0,
-                complexity: fstat.cyclomatic_complexity || 0,
-                heat: heatVal,
-                comment: sym.comment || '',
-                isEntry: true
-            }
-        }];
+        const fname = (sym.file_path || '').split('/').pop() || '';
 
         visibleNodeIds.add(String(entryId));
-        initCytoscape(elements);
+        initCytoscape([{
+            group: 'nodes', data: {
+                id: String(entryId), label, kind, shape: 'round-rectangle',
+                file: sym.file_path || '', line: sym.line || 0,
+                fan_in: fstat.fan_in || 0, fan_out: fstat.fan_out || 0,
+                complexity: fstat.cyclomatic_complexity || 0,
+                heat: heatVal, comment: sym.comment || '', isEntry: true,
+                fname: fname
+            }
+        }], 'cy-call');
 
-        // 若入口函数无下级调用，标记灰色边框
         const hasEntryOutgoing = fullGraphData.edges.some(e => String(e.source_id) === String(entryId));
         if (!hasEntryOutgoing && cy) {
             cy.getElementById(String(entryId)).data('isDeadEnd', true);
         }
     }
 
-    // 展开节点的下一级调用关系
     function expandNode(nodeId) {
         if (!isLazyMode || expandedNodeIds.has(nodeId) || !fullGraphData) return;
-
-        // 查找从该节点出发的未显示边
         const newEdges = fullGraphData.edges.filter(e =>
             String(e.source_id) === nodeId && !visibleNodeIds.has(String(e.target_id))
         );
@@ -178,14 +138,10 @@
             if (expandEl && expandedNodeIds.has(nodeId)) expandEl.textContent = '已展开';
             return;
         }
-
         expandedNodeIds.add(nodeId);
-
-        // 收集新目标节点 ID
         const calleeIds = new Set();
         newEdges.forEach(e => calleeIds.add(String(e.target_id)));
 
-        // 构建 symbol/stats 查找表
         const symbolMap = {};
         (data.symbols || []).forEach(s => { symbolMap[s.symbol_id] = s; });
         const statsMap = {};
@@ -194,75 +150,55 @@
         }
         const maxFanIn = data.stats && data.stats.maxFanIn || 1;
 
-        // 构建新增节点和边的 elements
         const newElements = [];
         calleeIds.forEach(id => {
             if (visibleNodeIds.has(id)) return;
             visibleNodeIds.add(id);
-
             const nodeData = fullGraphData.nodes.find(n => String(n.id) === id);
             const sym = symbolMap[parseInt(id)] || {};
             const fstat = statsMap[parseInt(id)] || {};
             const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
             const kind = sym.kind || (nodeData ? nodeData.type : 'FUNCTION');
             let label = (nodeData && nodeData.label) || sym.name || id;
+            let efname = '';
             if (kind !== 'FILE_ENTITY') {
-                const fname = (sym.file_path || '').split('/').pop();
-                if (fname) label += '\n(' + fname + ')';
+                efname = (sym.file_path || '').split('/').pop() || '';
             }
-
             newElements.push({
-                group: 'nodes',
-                data: {
-                    id: id,
-                    label: label,
-                    kind: kind,
-                    shape: nodeShape(kind),
-                    file: sym.file_path || '',
-                    line: sym.line || 0,
-                    fan_in: fstat.fan_in || 0,
-                    fan_out: fstat.fan_out || 0,
+                group: 'nodes', data: {
+                    id, label, kind, shape: 'round-rectangle',
+                    file: sym.file_path || '', line: sym.line || 0,
+                    fan_in: fstat.fan_in || 0, fan_out: fstat.fan_out || 0,
                     complexity: fstat.cyclomatic_complexity || 0,
-                    heat: heatVal,
-                    comment: sym.comment || ''
+                    heat: heatVal, comment: sym.comment || '',
+                    fname: efname
                 }
             });
         });
-
         newEdges.forEach((e, idx) => {
             newElements.push({
-                group: 'edges',
-                data: {
+                group: 'edges', data: {
                     id: `e-lazy-${idx}-${nodeId}`,
-                    source: String(e.source_id),
-                    target: String(e.target_id),
-                    relation: e.relation || 'CALLS',
-                    weight: e.weight || 1
+                    source: String(e.source_id), target: String(e.target_id),
+                    relation: e.relation || 'CALLS', weight: e.weight || 1
                 }
             });
         });
-
         if (newElements.length === 0) return;
 
-        // 增量添加到当前图并重新布局（保持视角不变）
         cy.add(newElements);
 
-        // 标记无下级展开的节点为灰色边框
         calleeIds.forEach(id => {
             const hasOutgoing = fullGraphData.edges.some(e => String(e.source_id) === id);
-            if (!hasOutgoing) {
-                cy.getElementById(id).data('isDeadEnd', true);
-            }
+            if (!hasOutgoing) cy.getElementById(id).data('isDeadEnd', true);
         });
 
-        // 以父节点为中心，固定半径扇形展开子节点
         const parentPos = cy.getElementById(nodeId).position();
         const radius = 150;
         const calleeArray = Array.from(calleeIds);
         const count = calleeArray.length;
-        const arcAngle = Math.PI * 0.6; // 108° 扇形
+        const arcAngle = Math.PI * 0.6;
         const startAngle = Math.PI / 2 - arcAngle / 2;
-
         calleeArray.forEach((id, i) => {
             const angle = startAngle + arcAngle * i / Math.max(count - 1, 1);
             const node = cy.getElementById(id);
@@ -273,9 +209,49 @@
                 });
             }
         });
+
+        const addedEdgeIds = new Set();
+        newElements.forEach(el => { if (el.group === 'edges') addedEdgeIds.add(el.data.id); });
+        expansionChildren.set(nodeId, { edgeIds: addedEdgeIds, nodeIds: calleeIds });
+
+        // Add file-label companions for expanded nodes
+        calleeIds.forEach(id => {
+            const n = cy.getElementById(id);
+            const fn = n.data('fname');
+            if (!fn) return;
+            const fid = '_fl_' + id;
+            if (cy.getElementById(fid).length) return;
+            cy.add({
+                group: 'nodes',
+                data: { id: fid, label: fn, isFileLabel: true },
+                classes: 'file-label',
+                position: { x: n.position().x, y: n.position().y + n.height() / 2 + 10 }
+            });
+        });
     }
 
-    // 在全量显示的图中扫描并标记叶节点（无出边 → 灰色边框）
+    function collapseNode(parentId) {
+        const children = expansionChildren.get(parentId);
+        if (!children) return;
+        children.edgeIds.forEach(eid => {
+            const el = cy.getElementById(eid);
+            if (el.length) el.remove();
+        });
+        children.nodeIds.forEach(cid => collapseNode(cid));
+        children.nodeIds.forEach(cid => {
+            const el = cy.getElementById(cid);
+            // Remove companion file-label too
+            const fl = cy.getElementById('_fl_' + cid);
+            if (fl.length) fl.remove();
+            if (el.length && el.connectedEdges().length === 0) {
+                el.remove();
+                visibleNodeIds.delete(cid);
+            }
+        });
+        expansionChildren.delete(parentId);
+        expandedNodeIds.delete(parentId);
+    }
+
     function markDeadEndNodes() {
         if (!cy || !fullGraphData) return;
         cy.nodes().forEach(n => {
@@ -285,186 +261,256 @@
         });
     }
 
-    // 初始化 Cytoscape 图
-    function initCytoscape(elements) {
-        const container = document.getElementById('cy');
+    // === 通用 Cytoscape 初始化 ===
+    function initCytoscape(elements, containerId) {
+        const container = document.getElementById(containerId);
         if (!container) return;
 
-        // 节点数量超阈值时降级提示
-        const nodeCount = elements.filter(e => e.group === 'nodes').length;
-        if (nodeCount > WEBGL_THRESHOLD) {
-            console.warn(`节点数 ${nodeCount} 超过阈值 ${WEBGL_THRESHOLD}，启用聚合模式`);
+        if (typeof cytoscape === 'undefined') {
+            container.innerHTML = '<div style="padding:40px;color:#d65d0e;text-align:center;"><h3>Cytoscape.js 未加载</h3><p style="margin-top:8px;color:#bdae93;font-size:13px;">本报告需要网络连接以加载 Cytoscape.js</p></div>';
+            return;
         }
 
+        const nodeCount = elements.filter(e => e.group === 'nodes').length;
+        const isLarge = nodeCount > 1000;
+        const notice = document.getElementById('degrade-notice');
+        if (isLarge && notice) {
+            notice.style.display = 'block';
+            notice.textContent = '大图模式: ' + nodeCount + ' 个节点，已启用性能优化';
+        }
+
+        // Determine if this is left panel (call graph) or right panel
+        const isCallGraph = containerId === 'cy-call';
+
         try {
-            cy = cytoscape({
+            const instance = cytoscape({
                 container: container,
                 elements: elements,
                 style: [
                     {
-                        selector: 'node',
-                        style: {
-                            'label': 'data(label)',
-                            'color': '#fff',
-                            'font-size': '11px',
-                            'text-valign': 'center',
-                            'text-halign': 'center',
-                            'shape': 'data(shape)',
-                            'width': 'label',
-                            'height': 'label',
-                            'text-wrap': 'wrap',
-                            'padding': '6px',
-                            'border-width': 1,
-                            'border-color': '#e94560'
+                        selector: 'node', style: {
+                            label: 'data(label)', color: '#bdae93',
+                            'font-size': isLarge ? '9px' : '11px',
+                            'text-valign': 'center', 'text-halign': 'center',
+                            shape: 'data(shape)', width: 'label', height: 'label',
+                            'text-wrap': 'wrap', padding: '6px',
+                            'border-width': 1, 'border-color': '#d65d0e',
+                            'background-color': '#3c3836'
                         }
                     },
                     {
-                        selector: 'edge',
-                        style: {
-                            'width': 1.5,
-                            'line-color': '#0f3460',
-                            'target-arrow-color': '#e94560',
-                            'target-arrow-shape': 'triangle',
-                            'curve-style': 'bezier'
+                        selector: 'edge', style: {
+                            width: isLarge ? 1 : 1.5, 'line-color': '#504945',
+                            'target-arrow-color': '#d65d0e',
+                            'target-arrow-shape': 'triangle', 'curve-style': 'bezier'
                         }
                     },
                     {
-                        selector: 'node[isDeadEnd]',
-                        style: {
-                            'border-color': '#555555',
-                            'border-width': 1,
-                            'border-style': 'solid'
+                        selector: 'node[isDeadEnd]', style: {
+                            'border-color': '#928374', 'border-width': 1, 'border-style': 'solid'
                         }
                     },
                     {
-                        selector: 'node[isEntry]',
-                        style: {
-                            'border-width': 3,
-                            'border-color': '#FFD700',
-                            'color': '#FFD700',
-                            'font-weight': 'bold'
+                        selector: 'node[isEntry]', style: {
+                            'border-width': 3, 'border-color': '#fabd2f',
+                            color: '#fabd2f', 'font-weight': 'bold'
                         }
                     },
                     {
-                        selector: 'node:selected',
-                        style: {
-                            'border-width': 3,
-                            'border-color': '#D5EE2E'
+                        selector: 'node:selected', style: {
+                            'border-width': 3, 'border-color': '#fe8019'
+                        }
+                    },
+                    {
+                        selector: 'node[fileType="header"]', style: {
+                            'border-color': '#83a598', 'border-width': 2
+                        }
+                    },
+                    {
+                        selector: 'node[fileType="source"]', style: {
+                            'border-color': '#b8bb26', 'border-width': 2
+                        }
+                    },
+                    {
+                        selector: 'node.file-label', style: {
+                            'width': 0, 'height': 0, 'background-opacity': 0,
+                            'border-width': 0, 'label': 'data(label)',
+                            'color': '#928374', 'font-size': '10px',
+                            'text-valign': 'bottom', 'text-halign': 'center',
+                            'overlay-opacity': 0, 'events': 'no',
+                            'text-margin-y': 2, 'min-zoomed-font-size': 4
                         }
                     }
                 ],
                 layout: {
-                    name: nodeCount > 100 ? 'cose' : 'dagre',
-                    directed: true,
-                    rankDir: 'TB',
+                    name: 'cose',
                     padding: 20
-                }
+                },
+                wheelSensitivity: 0.15
             });
 
-            // 节点点击：显示详情 + 懒展开
-            cy.on('tap', 'node', function(evt) {
-                const node = evt.target;
-                const d = node.data();
-                document.getElementById('node-info').style.display = 'block';
-                document.getElementById('ni-name').textContent = d.label;
-                document.getElementById('ni-kind').textContent = d.kind;
-                document.getElementById('ni-file').textContent = (d.file || '').split('/').pop();
-                document.getElementById('ni-line').textContent = d.line;
-                document.getElementById('ni-fanin').textContent = d.fan_in;
-                document.getElementById('ni-fanout').textContent = d.fan_out;
-                document.getElementById('ni-cc').textContent = d.complexity;
-                const nc = document.getElementById('ni-comment');
-                if (d.comment) { nc.textContent = d.comment; nc.style.display = 'block'; }
-                else { nc.style.display = 'none'; }
+            if (isLarge) {
+                instance.hideEdgesOnViewport = true;
+                instance.motionBlur = true;
+                instance.textEvents = 'no';
+            }
 
-                // 懒展开模式：显示展开状态
-                const expandRow = document.getElementById('ni-expand-row');
-                const expandEl = document.getElementById('ni-expand');
-                if (isLazyMode && fullGraphData) {
-                    if (expandedNodeIds.has(node.id())) {
-                        expandEl.textContent = '已展开';
-                    } else {
-                        const calleeCount = fullGraphData.edges.filter(e =>
-                            String(e.source_id) === node.id()
-                        ).length;
-                        expandEl.textContent = calleeCount > 0 ? calleeCount + ' 个被调用函数' : '无调用关系';
+            // Add filename labels below function nodes
+            instance.one('layoutstop', function() {
+                instance.nodes().forEach(function(n) {
+                    const fn = n.data('fname');
+                    if (!fn) return;
+                    const fid = '_fl_' + n.id();
+                    if (instance.getElementById(fid).length) return;
+                    instance.add({
+                        group: 'nodes',
+                        data: { id: fid, label: fn, isFileLabel: true },
+                        classes: 'file-label',
+                        position: { x: n.position().x, y: n.position().y + n.height() / 2 + 10 }
+                    });
+                });
+            });
+
+            // Add file-label companions immediately for all nodes with fname
+            try {
+                instance.nodes().forEach(function(n_) {
+                    var fn_ = n_.data('fname');
+                    if (!fn_) return;
+                    var fid_ = '_fl_' + n_.id();
+                    if (instance.getElementById(fid_).length) return;
+                    instance.add({
+                        group: 'nodes', data: { id: fid_, label: fn_, isFileLabel: true },
+                        classes: 'file-label',
+                        position: { x: n_.position().x, y: n_.position().y + n_.height() / 2 + 10 }
+                    });
+                });
+            } catch(e) { console.warn('file-label err', e); }
+
+            // Only left panel (call graph) gets the full interactive treatment
+            if (isCallGraph) {
+                cy = instance;
+
+                cy.on('tap', 'node', function(evt) {
+                    const node = evt.target;
+                    const d = node.data();
+                    const container = document.getElementById('call-graph-area');
+                    const rect = container.getBoundingClientRect();
+                    const bb = node.renderedBoundingBox();
+                    const info = document.getElementById('node-info');
+                    const offsetX = bb.x2 - rect.left + 6;
+                    const offsetY = bb.y2 - rect.top + 6;
+                    info.style.left = Math.min(offsetX, Math.max(rect.width - 380, 0)) + 'px';
+                    info.style.top = Math.min(offsetY, Math.max(rect.height - 260, 0)) + 'px';
+                    info.style.display = 'block';
+                    document.getElementById('ni-name').textContent = d.label;
+                    document.getElementById('ni-kind').textContent = d.kind;
+                    document.getElementById('ni-file').textContent = (d.file || '').split('/').pop();
+                    document.getElementById('ni-line').textContent = d.line;
+                    document.getElementById('ni-fanin').textContent = d.fan_in;
+                    document.getElementById('ni-fanout').textContent = d.fan_out;
+                    document.getElementById('ni-cc').textContent = d.complexity;
+                    const nc = document.getElementById('ni-comment');
+                    if (d.comment) { nc.textContent = d.comment; nc.style.display = 'block'; }
+                    else { nc.style.display = 'none'; }
+
+                    const expandRow = document.getElementById('ni-expand-row');
+                    const expandEl = document.getElementById('ni-expand');
+                    if (isLazyMode && fullGraphData) {
+                        if (expandedNodeIds.has(node.id())) {
+                            expandEl.textContent = '已展开';
+                        } else {
+                            const calleeCount = fullGraphData.edges.filter(e =>
+                                String(e.source_id) === node.id()
+                            ).length;
+                            expandEl.textContent = calleeCount > 0 ? calleeCount + ' 个被调用函数' : '无调用关系';
+                        }
+                        expandRow.style.display = 'flex';
+                    } else if (expandRow) {
+                        expandRow.style.display = 'none';
                     }
-                    expandRow.style.display = 'flex';
-                } else if (expandRow) {
-                    expandRow.style.display = 'none';
-                }
+                    if (isLazyMode) expandNode(node.id());
+                });
 
-                // 展开下一级调用关系
-                if (isLazyMode) {
-                    expandNode(node.id());
-                }
-            });
+                cy.on('tap', function(evt) {
+                    if (evt.target === cy) document.getElementById('node-info').style.display = 'none';
+                });
 
-            // 背景点击：隐藏节点详情
-            cy.on('tap', function(evt) {
-                if (evt.target === cy) {
-                    document.getElementById('node-info').style.display = 'none';
-                }
-            });
+                cy.on('cxttap', 'node', function(evt) {
+                    const nid = evt.target.id();
+                    if (isLazyMode && expansionChildren.has(nid)) collapseNode(nid);
+                });
+            } else {
+                // Right panel: basic click to show name
+                cySide = instance;
+                const sideInfo = document.getElementById('cy-side');
+                cySide.on('tap', 'node', function(evt) {
+                    const d = evt.target.data();
+                    const info = document.getElementById('node-info');
+                    const callArea = document.getElementById('call-graph-area');
+                    const rect = callArea.getBoundingClientRect();
+                    const bb = evt.target.renderedBoundingBox();
+                    info.style.left = Math.min(bb.x2 - rect.left + 6, Math.max(rect.width - 380, 0)) + 'px';
+                    info.style.top = Math.min(bb.y2 - rect.top + 6, Math.max(rect.height - 260, 0)) + 'px';
+                    info.style.display = 'block';
+                    document.getElementById('ni-name').textContent = d.label;
+                    document.getElementById('ni-kind').textContent = d.kind;
+                    document.getElementById('ni-file').textContent = (d.file || '').split('/').pop();
+                    document.getElementById('ni-line').textContent = d.line;
+                    document.getElementById('ni-fanin').textContent = d.fan_in || '-';
+                    document.getElementById('ni-fanout').textContent = d.fan_out || '-';
+                    document.getElementById('ni-cc').textContent = d.complexity || '-';
+                    const nc = document.getElementById('ni-comment');
+                    if (d.comment) { nc.textContent = d.comment; nc.style.display = 'block'; }
+                    else { nc.style.display = 'none'; }
+                    document.getElementById('ni-expand-row').style.display = 'none';
+                });
+            }
 
         } catch (e) {
-            console.error('Cytoscape 初始化失败:', e);
-            container.innerHTML = '<div style="padding:20px;color:#e94560;">图形渲染初始化失败，请检查浏览器控制台</div>';
+            console.error('Cytoscape init failed:', e);
+            if (isCallGraph) {
+                container.innerHTML = '<div style="padding:20px;color:#d65d0e;">图形渲染初始化失败</div>';
+            }
         }
     }
 
-    // 切换图视图
-    window.switchTab = function(tab) {
-        currentTab = tab;
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        event.target.classList.add('active');
+    // === 右侧卡片切换 ===
+    window.switchCard = function(card) {
+        currentCard = card;
+        document.querySelectorAll('.card-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.card-tab[data-card="${card}"]`).classList.add('active');
 
-        const statsPanel = document.getElementById('stats-panel');
-        const canvasContainer = document.getElementById('canvas-container');
-        const sidebar = document.getElementById('sidebar');
+        // Hide all card bodies
+        document.querySelectorAll('#card-body > div').forEach(d => d.style.display = 'none');
 
-        if (tab === 'stats') {
-            statsPanel.style.display = 'block';
-            canvasContainer.style.display = 'none';
-            sidebar.style.display = 'none';
-            renderStats();
-            return;
-        }
-
-        statsPanel.style.display = 'none';
-        canvasContainer.style.display = 'block';
-        sidebar.style.display = 'block';
-
-        if (cy) { cy.destroy(); cy = null; }
-
-        if (tab === 'call') {
-            initCallGraphLazy();
-        } else {
-            isLazyMode = false;
-            let graphData;
-            switch (tab) {
-                case 'include': graphData = data.include_graph; break;
-                case 'type':    graphData = data.type_graph;    break;
-                default:        graphData = data.call_graph;
+        switch (card) {
+            case 'include':
+            case 'type': {
+                document.getElementById('cy-side').style.display = 'block';
+                if (cySide) { cySide.destroy(); cySide = null; }
+                const graphData = card === 'include' ? data.include_graph : data.type_graph;
+                const elements = buildElements(graphData, data.symbols || [], data.stats || {});
+                initCytoscape(elements, 'cy-side');
+                break;
             }
-            const elements = buildElements(graphData, data.symbols || [], data.stats || {});
-            initCytoscape(elements);
+            case 'stats':
+                document.getElementById('stats-panel').style.display = 'block';
+                renderStats();
+                break;
+            case 'symbols':
+                document.getElementById('symbol-panel').style.display = 'block';
+                break;
         }
     };
 
-    // 重置布局
     window.resetLayout = function() {
-        if (cy) {
-            cy.layout({ name: 'dagre', directed: true, rankDir: 'TB', padding: 20 }).run();
-        }
+        if (cy) cy.layout({ name: 'cose', padding: 20 }).run();
     };
 
-    // 适应窗口
     window.fitGraph = function() {
         if (cy) cy.fit();
     };
 
-    // 过滤符号列表
     window.filterSymbols = function(query) {
         const list = document.getElementById('symbol-list');
         list.querySelectorAll('li').forEach(li => {
@@ -472,7 +518,6 @@
         });
     };
 
-    // 渲染符号侧边栏
     function renderSidebar() {
         const list = document.getElementById('symbol-list');
         list.innerHTML = '';
@@ -481,24 +526,21 @@
             li.textContent = s.name;
             li.title = s.qualified_name;
             li.onclick = () => {
-                if (cy) {
-                    const node = cy.getElementById(String(s.symbol_id));
-                    if (node.length) {
-                        cy.animate({ fit: { eles: node, padding: 60 }, duration: 400 });
-                        node.select();
-                    }
+                // Try left panel first, then right panel
+                const target = cy ? cy.getElementById(String(s.symbol_id)) : null;
+                if (target && target.length) {
+                    cy.animate({ fit: { eles: target, padding: 60 }, duration: 400 });
+                    target.select();
                 }
             };
             list.appendChild(li);
         });
     }
 
-    // 渲染统计面板
     function renderStats() {
         const stats = data.stats || {};
         const meta = data.metadata || {};
 
-        // 项目概览
         const summaryTable = document.getElementById('summary-table');
         summaryTable.innerHTML = `
             <tr><th>项目</th><td>${meta.project_name || '-'}</td></tr>
@@ -509,8 +551,8 @@
             <tr><th>生成时间</th><td>${meta.generated_at || '-'}</td></tr>
         `;
 
-        // 文件热力图
         const fileTable = document.getElementById('file-hotspot-table');
+        fileTable.innerHTML = '<tr><th>文件</th><th>行数</th><th>热力</th></tr>';
         const maxLines = Math.max(...(stats.file_stats || []).map(f => f.code_lines || 0), 1);
         (stats.file_stats || []).sort((a, b) => b.code_lines - a.code_lines).slice(0, 20).forEach(f => {
             const heat = (f.code_lines || 0) / maxLines;
@@ -520,8 +562,8 @@
             fileTable.appendChild(tr);
         });
 
-        // 函数热力图
         const funcTable = document.getElementById('func-hotspot-table');
+        funcTable.innerHTML = '<tr><th>函数</th><th>被调用</th><th>调用</th><th>圈复杂度</th></tr>';
         (stats.function_stats || []).slice(0, 20).forEach(f => {
             const sym = (data.symbols || []).find(s => s.symbol_id === f.function_id) || {};
             const tr = document.createElement('tr');
@@ -530,11 +572,10 @@
             funcTable.appendChild(tr);
         });
 
-        // 异常检测
         const anomalyList = document.getElementById('anomaly-list');
         const anomalies = data.anomalies || {};
         if ((anomalies.circular_includes || []).length === 0) {
-            anomalyList.innerHTML = '<p style="color:#4ade80;font-size:13px;">未检测到循环包含</p>';
+            anomalyList.innerHTML = '<p style="color:#b8bb26;font-size:13px;">未检测到循环包含</p>';
         } else {
             (anomalies.circular_includes || []).forEach(ci => {
                 const div = document.createElement('div');
@@ -545,19 +586,91 @@
         }
     }
 
-    // 更新页面元数据信息
     function updateMeta() {
         const meta = data.metadata || {};
-        document.getElementById('meta-info').textContent =
-            `项目: ${meta.project_name || '-'} | 生成时间: ${meta.generated_at || '-'}`;
+        const mi = document.getElementById('meta-info');
+        if (mi) mi.textContent = '项目: ' + (meta.project_name || '-') + ' | 生成时间: ' + (meta.generated_at || '-');
+        const cl = document.getElementById('cmd-line');
+        if (cl && meta.command_line) {
+            cl.textContent = '运行命令: ' + meta.command_line;
+            cl.style.display = 'block';
+        }
     }
 
-    // 初始化入口
+    // 主题切换（深色 Gruvbox / 浅色 Solarized）
+    let isLight = false;
+    function applyCyTheme(light) {
+        const cyInsts = [];
+        if (cy) cyInsts.push(cy);
+        if (cySide) cyInsts.push(cySide);
+        const dark = {
+            bg: '#3c3836', edge: '#504945', text: '#bdae93',
+            nodeBorder: '#d65d0e', selBorder: '#fe8019',
+            entryBorder: '#fabd2f', entryText: '#fabd2f',
+            deadBorder: '#928374', headBorder: '#83a598', srcBorder: '#b8bb26'
+        };
+        const light = {
+            bg: '#eee8d5', edge: '#93a1a1', text: '#657b83',
+            nodeBorder: '#cb4b16', selBorder: '#268bd2',
+            entryBorder: '#b58900', entryText: '#b58900',
+            deadBorder: '#586e75', headBorder: '#268bd2', srcBorder: '#859900'
+        };
+        const c = light ? light : dark;
+        cyInsts.forEach(inst => {
+            inst.style().selector('node').style({ 'background-color': c.bg, color: c.text, 'border-color': c.nodeBorder }).update();
+            inst.style().selector('edge').style({ 'line-color': c.edge, 'target-arrow-color': c.nodeBorder }).update();
+            inst.style().selector('node[isEntry]').style({ 'border-color': c.entryBorder, color: c.entryText }).update();
+            inst.style().selector('node[isDeadEnd]').style({ 'border-color': c.deadBorder }).update();
+            inst.style().selector('node[fileType="header"]').style({ 'border-color': c.headBorder }).update();
+            inst.style().selector('node[fileType="source"]').style({ 'border-color': c.srcBorder }).update();
+            inst.style().selector('node.file-label').style({ color: c.deadBorder }).update();
+        });
+    }
+    window.toggleTheme = function toggleTheme() {
+        isLight = !isLight;
+        document.body.classList.toggle('light', isLight);
+        document.getElementById('theme-btn').textContent = isLight ? '☾' : '☀';
+        applyCyTheme(isLight);
+    };
+
+    // 可拖拽分割线
+    function initSplitter() {
+        const divider = document.getElementById('divider');
+        const left = document.getElementById('call-graph-area');
+        const right = document.getElementById('card-panel');
+        if (!divider || !left || !right) return;
+
+        divider.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            divider.classList.add('active');
+            const startX = e.clientX;
+            const leftW = left.getBoundingClientRect().width;
+            const totalW = left.parentElement.getBoundingClientRect().width;
+
+            function onMove(ev) {
+                const pct = ((leftW + ev.clientX - startX) / totalW) * 100;
+                if (pct < 20 || pct > 80) return;
+                left.style.width = pct + '%';
+                right.style.width = (100 - pct) + '%';
+                if (cy) cy.resize();
+                if (cySide) cySide.resize();
+            }
+            function onUp() {
+                divider.classList.remove('active');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         updateMeta();
         renderSidebar();
-        // 默认显示调用图（懒加载模式）
         initCallGraphLazy();
+        initSplitter();
+        switchCard('include');
     });
 
 })();

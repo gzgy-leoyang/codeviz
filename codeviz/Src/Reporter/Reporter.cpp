@@ -27,66 +27,94 @@ static const char* HTML_TEMPLATE = R"HTML(
     <title>codeviz - 源码可视化分析报告</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #eee; }
-        #header { background: #16213e; padding: 12px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; border-bottom: 1px solid #0f3460; }
-        #header h1 { font-size: 20px; color: #e94560; }
-        #header .meta { font-size: 12px; color: #aaa; }
-        #header #cmd-line { font-size: 11px; color: #666; }
-        #tabs { background: #16213e; padding: 0 24px; display: flex; border-bottom: 1px solid #0f3460; }
-        .tab { padding: 12px 20px; cursor: pointer; color: #aaa; border-bottom: 2px solid transparent; font-size: 14px; }
-        .tab.active { color: #e94560; border-bottom-color: #e94560; }
-        #main { display: flex; height: calc(100vh - 102px); position: relative; }
-        #sidebar { flex: none; width: 280px; background: #16213e; border-left: 1px solid #0f3460; overflow: hidden; padding: 12px; transition: width 0.2s; }
-        #sidebar.collapsed { width: 44px; overflow: hidden; padding: 10px 2px; }
-        #sidebar.collapsed h3, #sidebar.collapsed #search, #sidebar.collapsed #symbol-list { display: none; }
-        #toggle-sidebar { position: absolute; top: 12px; right: 8px; background: #16213e; border: 1px solid #0f3460; color: #888; cursor: pointer; padding: 6px 10px; border-radius: 4px; font-size: 14px; line-height: 1; z-index: 20; }
-        #toggle-sidebar:hover { color: #e94560; border-color: #e94560; }
-        #sidebar h3 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
-        #sidebar-header { display: flex; align-items: center; margin-bottom: 8px; }
-        #search { width: 100%; background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; }
-        #symbol-list { list-style: none; max-height: calc(100vh - 200px); overflow-y: auto; }
-        #symbol-list li { padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #ccc; }
-        #symbol-list li:hover { background: #0f3460; color: #e94560; }
-        #canvas-container { flex: 1; position: relative; }
-        #cy { width: 100%; height: 100%; }
-        #stats-panel { display: none; padding: 20px; overflow-y: auto; flex: 1; }
-        .stat-card { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-        .stat-card h3 { font-size: 14px; color: #e94560; margin-bottom: 12px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { text-align: left; padding: 8px; background: #0f3460; color: #aaa; }
-        td { padding: 8px; border-bottom: 1px solid #0f3460; }
-        .hotbar { height: 8px; border-radius: 4px; display: inline-block; min-width: 4px; }
-        .anomaly { background: #e94560; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin: 4px 0; }
-        #node-info { position: absolute; top: 56px; left: 16px; background: #16213e; border: 1px solid #D5EE2E; border-radius: 8px; padding: 12px; max-width: 360px; display: none; font-size: 13px; z-index: 10; }
-        #node-info h4 { color: #e94560; margin-bottom: 8px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #282828; color: #ebdbb2; overflow: hidden; height: 100vh; }
+        #header { background: #3c3836; padding: 8px 16px; display: flex; align-items: center; border-bottom: 1px solid #504945; flex-shrink: 0; gap: 12px; }
+        #header .left { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        #header .left h1 { font-size: 16px; color: #d65d0e; white-space: nowrap; }
+        #header .left .meta { font-size: 11px; color: #bdae93; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #header .left #cmd-line { font-size: 11px; color: #7c6f64; }
+        #header .right { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+        #main { display: flex; height: calc(100vh - 60px); }
+        #call-graph-area { width: 70%; position: relative; min-width: 0; }
+        #cy-call { width: 100%; height: 100%; }
+        #node-info { position: absolute; background: #3c3836; border: 1px solid #fe8019; border-radius: 8px; padding: 12px; max-width: 360px; display: none; font-size: 13px; z-index: 10; }
+        #node-info h4 { color: #d65d0e; margin-bottom: 8px; }
         #node-info .kv { display: flex; justify-content: space-between; margin-bottom: 4px; }
-        #node-info .kv .k { color: #aaa; }
-        #controls { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 8px; z-index: 10; }
-        .btn { background: #0f3460; color: #eee; border: 1px solid #e94560; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        .btn:hover { background: #e94560; }
+        #node-info .kv .k { color: #bdae93; }
+        
+        .btn { background: #504945; color: #ebdbb2; border: 1px solid #d65d0e; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 20px; white-space: nowrap; line-height: 1; }
+        .btn:hover { background: #d65d0e; }
+        #divider { width: 4px; cursor: col-resize; background: #504945; flex-shrink: 0; }
+        #divider:hover, #divider.active { background: #d65d0e; }
+        #card-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        #card-tabs { display: flex; background: #3c3836; border-bottom: 1px solid #504945; flex-shrink: 0; }
+        .card-tab { padding: 10px 16px; cursor: pointer; color: #bdae93; border-bottom: 2px solid transparent; font-size: 13px; user-select: none; }
+        .card-tab:hover { color: #d65d0e; }
+        .card-tab.active { color: #d65d0e; border-bottom-color: #d65d0e; }
+        #card-body { flex: 1; position: relative; overflow: hidden; }
+        #card-body > div { width: 100%; height: 100%; display: none; }
+        #cy-side { width: 100%; height: 100%; }
+        #stats-panel { overflow-y: auto; padding: 16px; }
+        #symbol-panel { overflow-y: auto; padding: 12px; }
+        .stat-card { background: #3c3836; border: 1px solid #504945; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .stat-card h3 { font-size: 14px; color: #d65d0e; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 8px; background: #504945; color: #bdae93; }
+        td { padding: 8px; border-bottom: 1px solid #504945; }
+        .hotbar { height: 8px; border-radius: 4px; display: inline-block; min-width: 4px; }
+        .anomaly { background: #d65d0e; color: #ebdbb2; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin: 4px 0; }
+        #search { width: 100%; background: #504945; border: 1px solid #d65d0e; color: #ebdbb2; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; }
+        #symbol-list { list-style: none; max-height: calc(50vh); overflow-y: auto; }
+        #symbol-list li { padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #d5c4a1; }
+        #symbol-list li:hover { background: #504945; color: #d65d0e; }
+
+        /* Solarized Light */
+        body.light { background: #fdf6e3; color: #657b83; }
+        body.light #header { background: #eee8d5; border-color: #93a1a1; }
+        body.light #header .left h1 { color: #586e75; }
+        body.light #header .left .meta { color: #839496; }
+        body.light #header .left #cmd-line { color: #93a1a1; }
+        body.light #header .left h1 span { color: #839496 !important; }
+        body.light .btn { background: #eee8d5; color: #586e75; border-color: #93a1a1; font-size: 20px; line-height: 1; }
+        body.light .btn:hover { background: #cb4b16; color: #fdf6e3; border-color: #cb4b16; }
+        body.light #divider { background: #93a1a1; }
+        body.light #divider:hover, body.light #divider.active { background: #cb4b16; }
+        body.light #node-info { background: #eee8d5; border-color: #268bd2; }
+        body.light #node-info h4 { color: #586e75; }
+        body.light #node-info .kv .k { color: #839496; }
+        body.light #ni-comment { background: #93a1a1 !important; color: #fdf6e3 !important; }
+        body.light #card-tabs { background: #eee8d5; border-color: #93a1a1; }
+        body.light .card-tab { color: #839496; }
+        body.light .card-tab:hover { color: #cb4b16; }
+        body.light .card-tab.active { color: #cb4b16; border-color: #cb4b16; }
+        body.light .stat-card { background: #eee8d5; border-color: #93a1a1; }
+        body.light .stat-card h3 { color: #586e75; }
+        body.light table th { background: #93a1a1; color: #fdf6e3; }
+        body.light table td { border-color: #93a1a1; }
+        body.light .anomaly { background: #cb4b16; color: #fdf6e3; }
+        body.light #search { background: #eee8d5; border-color: #cb4b16; color: #586e75; }
+        body.light #symbol-list li { color: #657b83; }
+        body.light #symbol-list li:hover { background: #93a1a1; color: #fdf6e3; }
+        body.light #degrade-notice { background: #cb4b16 !important; color: #fdf6e3 !important; }
     </style>
 </head>
 <body>
     <div id="header">
-        <h1>codeviz &nbsp;<span style="color:#aaa;font-size:14px;">源码可视化分析报告</span></h1>
-        <div class="meta" id="meta-info">加载中...</div>
-        <div class="meta" id="cmd-line" style="display:none;"></div>
-    </div>
-    <div id="tabs">
-        <div class="tab active" onclick="switchTab('call')">调用图</div>
-        <div class="tab" onclick="switchTab('include')">包含图</div>
-        <div class="tab" onclick="switchTab('type')">类型图</div>
-        <div class="tab" onclick="switchTab('stats')">统计分析</div>
+        <div class="left">
+            <h1>codeviz <span style="color:#bdae93;font-size:13px;">源码可视化分析报告</span></h1>
+            <div class="meta" id="meta-info">加载中...</div>
+            <div class="meta" id="cmd-line" style="display:none;"></div>
+        </div>
+        <div class="right">
+            <button class="btn" onclick="resetLayout()" title="重置布局">⟳</button>
+            <button class="btn" onclick="fitGraph()" title="适应窗口">⛶</button>
+            <button class="btn" onclick="toggleTheme()" id="theme-btn" title="切换浅色/深色">☀</button>
+        </div>
     </div>
     <div id="main">
-        <div id="canvas-container">
-            <button id="toggle-sidebar" onclick="toggleSidebar()" title="折叠/展开侧边栏">▶</button>
-            <div id="controls">
-                <button class="btn" onclick="resetLayout()">重置布局</button>
-                <button class="btn" onclick="fitGraph()">适应窗口</button>
-            </div>
-            <div id="degrade-notice" style="display:none;position:absolute;top:56px;right:16px;background:#e94560;color:#fff;padding:6px 14px;border-radius:4px;font-size:12px;z-index:10;"></div>
-            <div id="cy"></div>
+        <div id="call-graph-area">
+            <div id="degrade-notice" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#d65d0e;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px;z-index:10;"></div>
+            <div id="cy-call"></div>
             <div id="node-info">
                 <h4 id="ni-name">-</h4>
                 <div class="kv"><span class="k">类型</span><span id="ni-kind">-</span></div>
@@ -96,20 +124,45 @@ static const char* HTML_TEMPLATE = R"HTML(
                 <div class="kv"><span class="k">调用</span><span id="ni-fanout">-</span></div>
                 <div class="kv"><span class="k">圈复杂度</span><span id="ni-cc">-</span></div>
                 <div class="kv" id="ni-expand-row" style="display:none;"><span class="k">可展开</span><span id="ni-expand">-</span></div>
-                <div id="ni-comment" style="margin-top:8px;padding:6px;background:#0f3460;border-radius:4px;font-size:11px;color:#ccc;display:none;white-space:pre-wrap;max-height:120px;overflow-y:auto;"></div>
+                <div id="ni-comment" style="margin-top:8px;padding:6px;background:#504945;border-radius:4px;font-size:11px;color:#ccc;display:none;white-space:pre-wrap;max-height:120px;overflow-y:auto;"></div>
             </div>
         </div>
-        <div id="sidebar">
-            <div id="sidebar-header">
-                <h3>符号搜索</h3>
+        <div id="divider"></div>
+        <div id="card-panel">
+            <div id="card-tabs">
+                <div class="card-tab active" data-card="include" onclick="switchCard('include')">包含图</div>
+                <div class="card-tab" data-card="type" onclick="switchCard('type')">类型图</div>
+                <div class="card-tab" data-card="stats" onclick="switchCard('stats')">统计分析</div>
+                <div class="card-tab" data-card="symbols" onclick="switchCard('symbols')">符号查询</div>
             </div>
-            <input id="search" type="text" placeholder="搜索函数/类/文件..." oninput="filterSymbols(this.value)">
-            <ul id="symbol-list"></ul>
+            <div id="card-body">
+                <div id="cy-side"></div>
+                <div id="stats-panel">
+                    <div class="stat-card" id="summary-card">
+                        <h3>项目概览</h3>
+                        <table id="sum-tbl"></table>
+                    </div>
+                    <div class="stat-card">
+                        <h3>文件热力图</h3>
+                        <table id="file-tbl"><tr><th>文件</th><th>行数</th><th>热力</th></tr></table>
+                    </div>
+                    <div class="stat-card">
+                        <h3>函数热力图</h3>
+                        <table id="func-tbl"><tr><th>函数</th><th>被调用</th><th>调用</th><th>圈复杂度</th></tr></table>
+                    </div>
+                    <div class="stat-card" id="anomaly-card">
+                        <h3>异常检测</h3>
+                        <div id="ano-list"></div>
+                    </div>
+                </div>
+                <div id="symbol-panel">
+                    <input id="search" type="text" placeholder="搜索函数/类/文件..." oninput="filterSymbols(this.value)">
+                    <ul id="symbol-list"></ul>
+                </div>
+            </div>
         </div>
-        <div id="stats-panel"></div>
     </div>
     <script>
-    // Cytoscape.js 内嵌（由 Reporter 填充真实库内容）
     {{ cytoscape_js }}
     </script>
     <script>
@@ -126,12 +179,8 @@ static const char* HTML_TEMPLATE = R"HTML(
 static const char* BRIDGE_JS = R"BRIDGE(
 (function(){
 'use strict';
-var data=window.CODEVIZ_DATA;
-var cy=null;
-var currentTab='call';
-var WEBGL_THRESHOLD=1000;
-/* lazy expansion state */
-var isLazyMode=false,fullGraphData=null,visibleNodeIds=new Set(),expandedNodeIds=new Set();
+var data=window.CODEVIZ_DATA,cy=null,cySide=null,currentCard='include',WEBGL_THRESHOLD=1000;
+var isLazyMode=false,fullGraphData=null,visibleNodeIds=new Set(),expandedNodeIds=new Set(),expansionChildren=new Map();
 function heatColor(v){var r=Math.round(v*220+35),g=Math.round((1-v)*150+30),b=Math.round((1-v)*180+30);return'rgb('+r+','+g+','+b+')';}
 function nodeShape(k){return'round-rectangle';}
 function buildElements(graphData,symbols,stats){
@@ -140,28 +189,26 @@ var statsMap={};if(stats&&stats.function_stats){stats.function_stats.forEach(fun
 var nodeSet=new Set();(graphData.nodes||[]).forEach(function(n){
 if(nodeSet.has(n.id))return;nodeSet.add(n.id);
 var sym=symbolMap[n.id]||{},fstat=statsMap[n.id]||{},maxFanIn=stats&&stats.maxFanIn||1,heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
-var kind=sym.kind||n.type||'FUNCTION';
-var label=n.label||sym.name||String(n.id);
-if(kind!=='FILE_ENTITY'){var fname=(sym.file_path||'').split('/').pop();if(fname)label+='\n('+fname+')';}
-elements.push({group:'nodes',data:{id:String(n.id),label:label,kind:kind,shape:nodeShape(kind),file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||''}});
+var kind=sym.kind||n.type||'FUNCTION',label=n.label||sym.name||String(n.id),fileType='',fname='';
+if(kind==='FILE_ENTITY'){var fp=(sym.file_path||n.label||'').toLowerCase();fileType=(fp.endsWith('.h')||fp.endsWith('.hpp')||fp.endsWith('.hxx')||fp.endsWith('.hh'))?'header':'source';}else{fname=(sym.file_path||'').split('/').pop()||'';}
+elements.push({group:'nodes',data:{id:String(n.id),label:label,kind:kind,shape:nodeShape(kind),file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||'',fileType:fileType,fname:fname}});
 });
 (graphData.edges||[]).forEach(function(e,idx){elements.push({group:'edges',data:{id:'e'+idx,source:String(e.source_id),target:String(e.target_id),relation:e.relation||'CALLS',weight:e.weight||1}});});
 return elements;}
 function initCallGraphLazy(){
 var entryId=data.metadata&&data.metadata.entry_function_id;fullGraphData=data.call_graph||{nodes:[],edges:[]};
-visibleNodeIds=new Set();expandedNodeIds=new Set();
-if(!entryId||!fullGraphData.nodes.length){isLazyMode=false;initCytoscape(buildElements(fullGraphData,data.symbols||[],data.stats||{}));if(cy)markDeadEndNodes();return;}
+visibleNodeIds=new Set();expandedNodeIds=new Set();expansionChildren.clear();
+if(!entryId||!fullGraphData.nodes.length){isLazyMode=false;initCytoscape(buildElements(fullGraphData,data.symbols||[],data.stats||{}),'cy-call');if(cy)markDeadEndNodes();return;}
 isLazyMode=true;var symbolMap={};(data.symbols||[]).forEach(function(s){symbolMap[s.symbol_id]=s;});
 var statsMap={};if(data.stats&&data.stats.function_stats){data.stats.function_stats.forEach(function(f){statsMap[f.function_id]=f;});}
 var sym=symbolMap[entryId]||{},fstat=statsMap[entryId]||{},maxFanIn=data.stats&&data.stats.maxFanIn||1,heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
-var kind=sym.kind||'FUNCTION',label=sym.name||String(entryId),fname=(sym.file_path||'').split('/').pop();
-if(fname)label+='\n('+fname+')';
-visibleNodeIds.add(String(entryId));initCytoscape([{group:'nodes',data:{id:String(entryId),label:label,kind:kind,shape:'round-rectangle',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||'',isEntry:true}}]);
+var kind=sym.kind||'FUNCTION',label=sym.name||String(entryId),fname=(sym.file_path||'').split('/').pop()||'';
+visibleNodeIds.add(String(entryId));initCytoscape([{group:'nodes',data:{id:String(entryId),label:label,kind:kind,shape:'round-rectangle',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||'',isEntry:true,fname:fname}}],'cy-call');
 var hasEntryOutgoing=fullGraphData.edges.some(function(e){return String(e.source_id)===String(entryId);});if(!hasEntryOutgoing&&cy)cy.getElementById(String(entryId)).data('isDeadEnd',true);}
 function expandNode(nodeId){
 if(!isLazyMode||expandedNodeIds.has(nodeId)||!fullGraphData)return;
 var newEdges=fullGraphData.edges.filter(function(e){return String(e.source_id)===nodeId&&!visibleNodeIds.has(String(e.target_id));});
-if(!newEdges.length){var el=document.getElementById('ni-expand');if(el&&expandedNodeIds.has(nodeId))el.textContent='已展开';return;}
+if(!newEdges.length){var el2=document.getElementById('ni-expand');if(el2&&expandedNodeIds.has(nodeId))el2.textContent='已展开';return;}
 expandedNodeIds.add(nodeId);
 var calleeIds=new Set();newEdges.forEach(function(e){calleeIds.add(String(e.target_id));});
 var symbolMap={};(data.symbols||[]).forEach(function(s){symbolMap[s.symbol_id]=s;});
@@ -170,64 +217,71 @@ var maxFanIn=data.stats&&data.stats.maxFanIn||1,newElements=[];
 calleeIds.forEach(function(id){
 if(visibleNodeIds.has(id))return;visibleNodeIds.add(id);
 var nd=fullGraphData.nodes.find(function(n){return String(n.id)===id;}),sym=symbolMap[parseInt(id)]||{},fstat=statsMap[parseInt(id)]||{},heatVal=(fstat.fan_in||0)/Math.max(maxFanIn,1);
-var kind=sym.kind||(nd?nd.type:'FUNCTION'),label=(nd&&nd.label)||sym.name||id;
-if(kind!=='FILE_ENTITY'){var fn=(sym.file_path||'').split('/').pop();if(fn)label+='\n('+fn+')';}
-newElements.push({group:'nodes',data:{id:id,label:label,kind:kind,shape:'round-rectangle',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||''}});
+var kind=sym.kind||(nd?nd.type:'FUNCTION'),label=(nd&&nd.label)||sym.name||id,fileType='',fn='';
+if(kind==='FILE_ENTITY'){var fp=(sym.file_path||nd.label||'').toLowerCase();fileType=(fp.endsWith('.h')||fp.endsWith('.hpp')||fp.endsWith('.hxx')||fp.endsWith('.hh'))?'header':'source';}else{fn=(sym.file_path||'').split('/').pop()||'';}
+newElements.push({group:'nodes',data:{id:id,label:label,kind:kind,shape:'round-rectangle',file:sym.file_path||'',line:sym.line||0,fan_in:fstat.fan_in||0,fan_out:fstat.fan_out||0,complexity:fstat.cyclomatic_complexity||0,heat:heatVal,comment:sym.comment||'',fileType:fileType,fname:fn}});
 });
 newEdges.forEach(function(e,idx){newElements.push({group:'edges',data:{id:'e-lazy-'+idx+'-'+nodeId,source:String(e.source_id),target:String(e.target_id),relation:e.relation||'CALLS',weight:e.weight||1}});});
 if(!newElements.length)return;cy.add(newElements);
 calleeIds.forEach(function(id){var hasOutgoing=fullGraphData.edges.some(function(e){return String(e.source_id)===id;});if(!hasOutgoing)cy.getElementById(id).data('isDeadEnd',true);});
 var parentPos=cy.getElementById(nodeId).position(),calleeArr=Array.from(calleeIds),cc=calleeArr.length,arc=Math.PI*0.6,start=Math.PI/2-arc/2,radius=150;
-calleeArr.forEach(function(id,i){var angle=start+arc*i/Math.max(cc-1,1),nd=cy.getElementById(id);if(nd.length)nd.position({x:parentPos.x+radius*Math.cos(angle),y:parentPos.y+radius*Math.sin(angle)});});}
+calleeArr.forEach(function(id,i){var angle=start+arc*i/Math.max(cc-1,1),nd=cy.getElementById(id);if(nd.length)nd.position({x:parentPos.x+radius*Math.cos(angle),y:parentPos.y+radius*Math.sin(angle)});});
+var addedEdgeIds=new Set();calleeIds.forEach(function(id){var n2=cy.getElementById(id),exfn=n2.data('fname');if(!exfn)return;var fid='_fl_'+id;if(cy.getElementById(fid).length)return;cy.add({group:'nodes',data:{id:fid,label:exfn,isFileLabel:true},classes:'file-label',position:{x:n2.position().x,y:n2.position().y+n2.height()/2+10}});});;newElements.forEach(function(el){if(el.group==='edges')addedEdgeIds.add(el.data.id);});expansionChildren.set(nodeId,{edgeIds:addedEdgeIds,nodeIds:calleeIds});}
+function collapseNode(parentId){var children=expansionChildren.get(parentId);if(!children)return;children.edgeIds.forEach(function(eid){var el=cy.getElementById(eid);if(el.length)el.remove();});children.nodeIds.forEach(function(cid){collapseNode(cid);});children.nodeIds.forEach(function(cid){var fl2=cy.getElementById('_fl_'+cid);if(fl2.length)fl2.remove();var el=cy.getElementById(cid);if(el.length&&el.connectedEdges().length===0){el.remove();visibleNodeIds.delete(cid);}});expansionChildren.delete(parentId);expandedNodeIds.delete(parentId);}
 function markDeadEndNodes(){if(!cy||!fullGraphData)return;cy.nodes().forEach(function(n){var nid=n.id(),hasOut=fullGraphData.edges.some(function(e){return String(e.source_id)===nid;});if(!hasOut)n.data('isDeadEnd',true);});}
-function initCytoscape(elements){
-var container=document.getElementById('cy');if(!container)return;
-if(typeof cytoscape==='undefined'){container.innerHTML='<div style="padding:40px;color:#e94560;text-align:center;"><h3>Cytoscape.js 未加载</h3><p style="margin-top:8px;color:#aaa;font-size:13px;">本报告需要网络连接以加载 Cytoscape.js，或替换为离线版本</p></div>';return;}
-var nodeCount=elements.filter(function(e){return e.group==='nodes';}).length;
-var isLarge=nodeCount>1000;var notice=document.getElementById('degrade-notice');
+function initCytoscape(elements,containerId){
+var container=document.getElementById(containerId);if(!container)return;
+if(typeof cytoscape==='undefined'){container.innerHTML='<div style="padding:40px;color:#d65d0e;text-align:center;"><h3>Cytoscape.js 未加载</h3></div>';return;}
+var nodeCount=elements.filter(function(e){return e.group==='nodes';}).length,isLarge=nodeCount>1000,notice=document.getElementById('degrade-notice');
 if(isLarge&&notice){notice.style.display='block';notice.textContent='大图模式: '+nodeCount+' 个节点，已启用性能优化';}
-try{var opts={container:container,elements:elements,
-style:[{selector:'node',style:{label:'data(label)',color:'#fff','font-size':isLarge?'9px':'11px','text-valign':'center','text-halign':'center','shape':'data(shape)','width':'label','height':'label','text-wrap':'wrap','padding':'6px','border-width':1,'border-color':'#e94560','background-color':'#16213e'}},
-{selector:'edge',style:{width:isLarge?1:1.5,'line-color':'#0f3460','target-arrow-color':'#e94560','target-arrow-shape':'triangle','curve-style':'bezier'}},
-{selector:'node[isDeadEnd]',style:{'border-color':'#555555','border-width':1,'border-style':'solid'}},{selector:'node[isEntry]',style:{'border-width':3,'border-color':'#FFD700','color':'#FFD700','font-weight':'bold'}},{selector:'node:selected',style:{'border-width':3,'border-color':'#D5EE2E'}}],
-layout:{name:'cose',padding:20}};
-if(isLarge){opts.hideEdgesOnViewport=true;opts.motionBlur=true;opts.textEvents='no';opts.wheelSensitivity=0.5;}
-cy=cytoscape(opts);
-cy.on('tap','node',function(evt){var node=evt.target,d=node.data();document.getElementById('node-info').style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;var nc=document.getElementById('ni-comment');if(d.comment){nc.textContent=d.comment;nc.style.display='block';}else{nc.style.display='none';}
-var er=document.getElementById('ni-expand-row'),ee=document.getElementById('ni-expand');if(isLazyMode&&fullGraphData){if(expandedNodeIds.has(node.id())){ee.textContent='已展开';}else{var cc=fullGraphData.edges.filter(function(e){return String(e.source_id)===node.id();}).length;ee.textContent=cc>0?cc+' 个被调用函数':'无调用关系';}er.style.display='flex';}else if(er){er.style.display='none';}
+var isCall=(containerId==='cy-call');
+try{var inst=cytoscape({container:container,elements:elements,
+style:[{selector:'node',style:{label:'data(label)',color:'#bdae93','font-size':isLarge?'9px':'11px','text-valign':'center','text-halign':'center','shape':'data(shape)','width':'label','height':'label','text-wrap':'wrap','padding':'6px','border-width':1,'border-color':'#d65d0e','background-color':'#3c3836'}},
+{selector:'edge',style:{width:isLarge?1:1.5,'line-color':'#504945','target-arrow-color':'#d65d0e','target-arrow-shape':'triangle','curve-style':'bezier'}},
+{selector:'node[isDeadEnd]',style:{'border-color':'#928374','border-width':1,'border-style':'solid'}},
+{selector:'node[isEntry]',style:{'border-width':3,'border-color':'#fabd2f','color':'#fabd2f','font-weight':'bold'}},
+{selector:'node:selected',style:{'border-width':3,'border-color':'#fe8019'}},{selector:'node[fileType="header"]',style:{'border-color':'#83a598','border-width':2}},{selector:'node[fileType="source"]',style:{'border-color':'#b8bb26','border-width':2}},{selector:'node.file-label',style:{'width':0,'height':0,'background-opacity':0,'border-width':0,'label':'data(label)','color':'#928374','font-size':'10px','text-valign':'bottom','text-halign':'center','overlay-opacity':0,'events':'no','text-margin-y':2,'min-zoomed-font-size':4,'z-index':-1}}],
+layout:{name:'cose',padding:20},wheelSensitivity:0.15});
+try{inst.nodes().forEach(function(n_){var fn_=n_.data('fname');if(!fn_)return;var fid_='_fl_'+n_.id();if(inst.getElementById(fid_).length)return;inst.add({group:'nodes',data:{id:fid_,label:fn_,isFileLabel:true},classes:'file-label',position:{x:n_.position().x,y:n_.position().y+n_.height()/2+10}});});}catch(e){console.warn('file-label err',e);}
+if(isLarge){inst.hideEdgesOnViewport=true;inst.motionBlur=true;inst.textEvents='no';}
+if(isCall){cy=inst;
+cy.on('tap','node',function(evt){var node=evt.target,d=node.data(),area=document.getElementById('call-graph-area'),rect=area.getBoundingClientRect(),bb=node.renderedBoundingBox(),info=document.getElementById('node-info'),ox=bb.x2-rect.left+6,oy=bb.y2-rect.top+6;info.style.left=Math.min(ox,Math.max(rect.width-380,0))+'px';info.style.top=Math.min(oy,Math.max(rect.height-260,0))+'px';info.style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in;document.getElementById('ni-fanout').textContent=d.fan_out;document.getElementById('ni-cc').textContent=d.complexity;var nc=document.getElementById('ni-comment');if(d.comment){nc.textContent=d.comment;nc.style.display='block';}else{nc.style.display='none';}
+var er=document.getElementById('ni-expand-row'),ee=document.getElementById('ni-expand');if(isLazyMode&&fullGraphData){if(expandedNodeIds.has(node.id())){ee.textContent='已展开';}else{var cc2=fullGraphData.edges.filter(function(e){return String(e.source_id)===node.id();}).length;ee.textContent=cc2>0?cc2+' 个被调用函数':'无调用关系';}er.style.display='flex';}else if(er){er.style.display='none';}
 if(isLazyMode)expandNode(node.id());});
 cy.on('tap',function(evt){if(evt.target===cy)document.getElementById('node-info').style.display='none';});
-}catch(e){console.error('Cytoscape init failed:',e);}}
-window.switchTab=function(tab){
-currentTab=tab;document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});event.target.classList.add('active');
-var sp=document.getElementById('stats-panel'),cc=document.getElementById('canvas-container'),sb=document.getElementById('sidebar');
-if(tab==='stats'){sp.style.display='block';cc.style.display='none';sb.style.display='none';renderStats();return;}
-sp.style.display='none';cc.style.display='block';sb.style.display='block';
-if(cy){cy.destroy();cy=null;}
-if(tab==='call'){initCallGraphLazy();}else{isLazyMode=false;var graphData=tab==='include'?data.include_graph:data.type_graph;initCytoscape(buildElements(graphData||{nodes:[],edges:[]},data.symbols||[],data.stats||{}));}};
+cy.on('cxttap','node',function(evt){var nid=evt.target.id();if(isLazyMode&&expansionChildren.has(nid))collapseNode(nid);});
+}else{cySide=inst;
+cySide.on('tap','node',function(evt){var d=evt.target.data(),area=document.getElementById('call-graph-area'),rect=area.getBoundingClientRect(),bb=evt.target.renderedBoundingBox(),info=document.getElementById('node-info'),ox=bb.x2-rect.left+6,oy=bb.y2-rect.top+6;info.style.left=Math.min(ox,Math.max(rect.width-380,0))+'px';info.style.top=Math.min(oy,Math.max(rect.height-260,0))+'px';info.style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in||'-';document.getElementById('ni-fanout').textContent=d.fan_out||'-';document.getElementById('ni-cc').textContent=d.complexity||'-';var nc=document.getElementById('ni-comment');if(d.comment){nc.textContent=d.comment;nc.style.display='block';}else{nc.style.display='none';}document.getElementById('ni-expand-row').style.display='none';});}
+}catch(e){console.error('Cytoscape init failed:',e);if(isCall)container.innerHTML='<div style="padding:20px;color:#d65d0e;">图形渲染初始化失败</div>';}}
+window.switchCard=function(card){
+currentCard=card;document.querySelectorAll('.card-tab').forEach(function(t){t.classList.remove('active');});document.querySelector('.card-tab[data-card="'+card+'"]').classList.add('active');
+document.querySelectorAll('#card-body > div').forEach(function(d){d.style.display='none';});
+if(card==='include'||card==='type'){document.getElementById('cy-side').style.display='block';if(cySide){cySide.destroy();cySide=null;}var gd=card==='include'?data.include_graph:data.type_graph;initCytoscape(buildElements(gd||{nodes:[],edges:[]},data.symbols||[],data.stats||{}),'cy-side');}
+else if(card==='stats'){document.getElementById('stats-panel').style.display='block';renderStats();}
+else if(card==='symbols'){document.getElementById('symbol-panel').style.display='block';}};
 window.resetLayout=function(){if(cy)cy.layout({name:'cose',padding:20}).run();};
-window.toggleSidebar=function(){var sb=document.getElementById('sidebar');sb.classList.toggle('collapsed');var btn=document.getElementById('toggle-sidebar');if(btn)btn.textContent=sb.classList.contains('collapsed')?'◀':'▶';setTimeout(function(){if(cy)cy.resize();},250);};
 window.fitGraph=function(){if(cy)cy.fit();};
 window.filterSymbols=function(q){document.getElementById('symbol-list').querySelectorAll('li').forEach(function(li){li.style.display=li.textContent.toLowerCase().includes(q.toLowerCase())?'':'none';});};
 function renderSidebar(){var list=document.getElementById('symbol-list');list.innerHTML='';(data.symbols||[]).forEach(function(s){var li=document.createElement('li');li.textContent=s.name;li.title=s.qualified_name;li.onclick=function(){if(cy){var node=cy.getElementById(String(s.symbol_id));if(node.length){cy.animate({fit:{eles:node,padding:60},duration:400});node.select();}}};list.appendChild(li);});}
 function renderStats(){
-var stats=data.stats||{};var meta=data.metadata||{};
-var sp=document.getElementById('stats-panel');
+var stats=data.stats||{},meta=data.metadata||{},sp=document.getElementById('stats-panel');
 sp.innerHTML='<div class="stat-card"><h3>项目概览</h3><table id="sum-tbl"></table></div><div class="stat-card"><h3>文件热力图</h3><table id="file-tbl"><tr><th>文件</th><th>行数</th><th>热力</th></tr></table></div><div class="stat-card"><h3>函数热力图</h3><table id="func-tbl"><tr><th>函数</th><th>被调用</th><th>调用</th><th>圈复杂度</th></tr></table></div><div class="stat-card"><h3>异常检测</h3><div id="ano-list"></div></div>';
 var st=document.getElementById('sum-tbl');
-st.innerHTML='<tr><th>项目</th><td>'+( meta.project_name||'-')+'</td></tr><tr><th>文件数</th><td>'+(meta.file_count||0)+'</td></tr><tr><th>函数数</th><td>'+(meta.function_count||0)+'</td></tr><tr><th>C编译器</th><td>'+(meta.c_compiler||'-')+'</td></tr><tr><th>C++编译器</th><td>'+(meta.cxx_compiler||'-')+'</td></tr>';
+st.innerHTML='<tr><th>项目</th><td>'+(meta.project_name||'-')+'</td></tr><tr><th>文件数</th><td>'+(meta.file_count||0)+'</td></tr><tr><th>函数数</th><td>'+(meta.function_count||0)+'</td></tr><tr><th>C编译器</th><td>'+(meta.c_compiler||'-')+'</td></tr><tr><th>C++编译器</th><td>'+(meta.cxx_compiler||'-')+'</td></tr>';
 var ml=Math.max.apply(null,(stats.file_stats||[]).map(function(f){return f.code_lines||0;}).concat([1]));
 var ft=document.getElementById('file-tbl');
-(stats.file_stats||[]).sort(function(a,b){return b.code_lines-a.code_lines;}).slice(0,20).forEach(function(f){var h=(f.code_lines||0)/ml;var tr=document.createElement('tr');tr.innerHTML='<td>'+f.file_path.split('/').pop()+'</td><td>'+f.code_lines+'</td><td><span class="hotbar" style="width:'+Math.max(h*120,4)+'px;background:'+heatColor(h)+'"></span></td>';ft.appendChild(tr);});
+(stats.file_stats||[]).sort(function(a,b){return b.code_lines-a.code_lines;}).slice(0,20).forEach(function(f){var h=(f.code_lines||0)/ml,tr=document.createElement('tr');tr.innerHTML='<td>'+f.file_path.split('/').pop()+'</td><td>'+f.code_lines+'</td><td><span class="hotbar" style="width:'+Math.max(h*120,4)+'px;background:'+heatColor(h)+'"></span></td>';ft.appendChild(tr);});
 var symMap={};(data.symbols||[]).forEach(function(s){symMap[s.symbol_id]=s;});
 var fnT=document.getElementById('func-tbl');
-(stats.function_stats||[]).slice(0,20).forEach(function(f){var sym=symMap[f.function_id]||{};var tr=document.createElement('tr');tr.innerHTML='<td>'+(sym.name||f.function_id)+'</td><td>'+f.fan_in+'</td><td>'+f.fan_out+'</td><td>'+f.cyclomatic_complexity+'</td>';fnT.appendChild(tr);});
-var anoList=document.getElementById('ano-list');var ano=data.anomalies||{};
-if(!(ano.circular_includes||[]).length){anoList.innerHTML='<p style="color:#4ade80;font-size:13px;">未检测到循环包含</p>';}
+(stats.function_stats||[]).slice(0,20).forEach(function(f){var sym=symMap[f.function_id]||{},tr=document.createElement('tr');tr.innerHTML='<td>'+(sym.name||f.function_id)+'</td><td>'+f.fan_in+'</td><td>'+f.fan_out+'</td><td>'+f.cyclomatic_complexity+'</td>';fnT.appendChild(tr);});
+var anoList=document.getElementById('ano-list'),ano=data.anomalies||{};
+if(!(ano.circular_includes||[]).length){anoList.innerHTML='<p style="color:#b8bb26;font-size:13px;">未检测到循环包含</p>';}
 else{(ano.circular_includes||[]).forEach(function(ci){var d=document.createElement('div');d.className='anomaly';d.textContent='循环包含: '+ci.file_cycle.join(' → ');anoList.appendChild(d);});}
 }
 function updateMeta(){var meta=data.metadata||{},mi=document.getElementById('meta-info');if(mi)mi.textContent='项目: '+(meta.project_name||'-')+' | 生成时间: '+(meta.generated_at||'-');var cl=document.getElementById('cmd-line');if(cl&&meta.command_line){cl.textContent='运行命令: '+meta.command_line;cl.style.display='block';}}
-document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSidebar();initCallGraphLazy();});
+var isLight=false;window.toggleTheme=function(){isLight=!isLight;document.body.classList.toggle('light',isLight);var btn=document.getElementById('theme-btn');if(btn)btn.textContent=isLight?'☾':'☀';applyCyTheme(isLight);};function applyCyTheme(light){var insts=[];if(cy)insts.push(cy);if(cySide)insts.push(cySide);var dc={bg:'#3c3836',edge:'#504945',text:'#bdae93',nodeBorder:'#d65d0e',selBorder:'#fe8019',entryBorder:'#fabd2f',entryText:'#fabd2f',deadBorder:'#928374',headBorder:'#83a598',srcBorder:'#b8bb26'},lc={bg:'#eee8d5',edge:'#93a1a1',text:'#657b83',nodeBorder:'#cb4b16',selBorder:'#268bd2',entryBorder:'#b58900',entryText:'#b58900',deadBorder:'#586e75',headBorder:'#268bd2',srcBorder:'#859900'},c=light?lc:dc;insts.forEach(function(inst){inst.style().selector('node').style({'background-color':c.bg,color:c.text,'border-color':c.nodeBorder}).update();inst.style().selector('edge').style({'line-color':c.edge,'target-arrow-color':c.nodeBorder}).update();inst.style().selector('node[isEntry]').style({'border-color':c.entryBorder,color:c.entryText}).update();inst.style().selector('node[isDeadEnd]').style({'border-color':c.deadBorder}).update();inst.style().selector('node[fileType="header"]').style({'border-color':c.headBorder}).update();inst.style().selector('node[fileType="source"]').style({'border-color':c.srcBorder}).update();inst.style().selector('node.file-label').style({color:c.deadBorder}).update();});}
+function initSplitter(){var divider=document.getElementById('divider'),left=document.getElementById('call-graph-area'),right=document.getElementById('card-panel');if(!divider||!left||!right)return;divider.addEventListener('mousedown',function(e){e.preventDefault();divider.classList.add('active');var startX=e.clientX,leftW=left.getBoundingClientRect().width,totalW=left.parentElement.getBoundingClientRect().width;function onMove(ev){var pct=((leftW+ev.clientX-startX)/totalW)*100;if(pct<20||pct>80)return;left.style.width=pct+'%';right.style.width=(100-pct)+'%';if(cy)cy.resize();if(cySide)cySide.resize();}function onUp(){divider.classList.remove('active');document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);});}
+document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSidebar();initCallGraphLazy();initSplitter();switchCard('include');});
 })();
 )BRIDGE";
 
