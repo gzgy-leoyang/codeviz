@@ -526,6 +526,14 @@
                     const nid = evt.target.id();
                     if (isLazyMode && expansionChildren.has(nid)) collapseNode(nid);
                 });
+
+                // Hover: highlight connected edges
+                cy.on('mouseover', 'node', function(evt) {
+                    evt.target.connectedEdges().style('line-color', '#E1F656');
+                });
+                cy.on('mouseout', 'node', function(evt) {
+                    evt.target.connectedEdges().style('line-color', null);
+                });
             } else {
                 // Right panel: basic click to show name
                 cySide = instance;
