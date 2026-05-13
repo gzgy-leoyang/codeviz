@@ -263,20 +263,26 @@
 - 移除入口节点特制的 `border-width: 3` / `border-color: #fabd2f`
 - 入口节点边框与其他节点一致（1px, 主题色），仅保留粗体黄色文字区分
 - 主题切换 `applyCyTheme` 同步移除入口边框设置
-- 移除入口节点特制的 `border-width: 3` / `border-color: #fabd2f`
-- 入口节点边框与其他节点一致（1px, 主题色），仅保留粗体黄色文字区分
-- 主题切换 `applyCyTheme` 同步移除入口边框设置
 
 #### 调用边去重
 - `convert_call_graph` 使用 `std::map<pair<uint32_t,uint32_t>, uint32_t>` 按 `(caller_id, callee_id)` 合并重复调用边
 - 合并后的 `weight` 为各边 `call_count` 之和
 
+#### 共享子节点展开修复
+- 当子节点已被其他父节点加载时，expandNode 仍画出调用连线（不因目标已可见而跳过）
+- 仅对首次可见的子节点创建节点框和定位，已存在的共享子节点不移动
+- 修复 BRIDGE_JS 中 expandNode 函数体末缺少 `}` 导致的语法错误
+
+#### 悬停高亮连线
+- 鼠标悬停节点时，其扇入/扇出连线高亮为 `#E1F656`（亮绿）
+- 鼠标移出后连线恢复样式表颜色（深色 `#504945` / 浅色 `#93a1a1`）
+
 #### 文件变更总览
 
 | 文件 | 变更 |
 |------|------|
-| `Src/Reporter/Reporter.cpp` | tap/edge handler、entry shape+border、nodeShape、edge-info、dedup、light theme |
-| `Src/Template/cytoscape_bridge.js` | tap/edge handler、entry shape+border、nodeShape、external refs、theme toggle |
+| `Src/Reporter/Reporter.cpp` | tap/edge handler、entry shape+border、nodeShape、edge-info、dedup、light theme、expandNode 重构、hover 高亮 |
+| `Src/Template/cytoscape_bridge.js` | tap/edge handler、entry shape+border、nodeShape、external refs、theme toggle、expandNode 重构、hover 高亮 |
 | `Doc/Code_Visualization_Tool_Design_Spec.md` | 前端交互说明同步 |
 | `CHANGES.md` | 本文件 |
 
