@@ -45,3 +45,8 @@
 - `git add` 相关变更文件
 - 提交信息格式：`docs: 项目审视 + CHANGES.md 更新 + 设计规范同步`，附详细变更说明
 - 汇报结果：提交哈希、变更文件数、新增/删除行数
+
+### 6. 更新内存状态记录
+
+- 在 `~/.claude/projects/-home-dd-Works-ReadSrc/memory/project_state.md` 中更新 HEAD 提交、日期和变更摘要
+- 确保 MEMORY.md 中的索引行反映最新状态
