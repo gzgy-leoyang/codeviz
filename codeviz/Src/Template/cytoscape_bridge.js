@@ -134,10 +134,13 @@
 
     function expandNode(nodeId) {
         if (!isLazyMode || expandedNodeIds.has(nodeId) || !fullGraphData) return;
-        const newEdges = fullGraphData.edges.filter(e =>
-            String(e.source_id) === nodeId && !visibleNodeIds.has(String(e.target_id))
+
+        // All outgoing edges from this node (regardless of target visibility)
+        const allEdges = fullGraphData.edges.filter(e =>
+            String(e.source_id) === nodeId
         );
-        if (newEdges.length === 0) {
+
+        if (allEdges.length === 0) {
             // Check if node has external (system) calls
             const nodeName = (data.symbols || []).find(function(s) { return s.symbol_id === parseInt(nodeId); });
             const extCalls = (data.external_refs || []).filter(function(r) {
@@ -152,12 +155,13 @@
                 nc.style.display = 'block';
                 return;
             }
-            if (expandedNodeIds.has(nodeId) && expandEl) expandEl.textContent = '已展开';
+            if (expandEl) expandEl.textContent = '无调用关系';
             return;
         }
+
         expandedNodeIds.add(nodeId);
         const calleeIds = new Set();
-        newEdges.forEach(e => calleeIds.add(String(e.target_id)));
+        allEdges.forEach(e => calleeIds.add(String(e.target_id)));
 
         const symbolMap = {};
         (data.symbols || []).forEach(s => { symbolMap[s.symbol_id] = s; });
@@ -167,72 +171,79 @@
         }
         const maxFanIn = data.stats && data.stats.maxFanIn || 1;
 
+        // Create nodes for newly visible callees + edges for ALL callees
         const newElements = [];
+        const newCalleeIds = new Set();
         calleeIds.forEach(id => {
-            if (visibleNodeIds.has(id)) return;
-            visibleNodeIds.add(id);
-            const nodeData = fullGraphData.nodes.find(n => String(n.id) === id);
-            const sym = symbolMap[parseInt(id)] || {};
-            const fstat = statsMap[parseInt(id)] || {};
-            const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
-            const kind = sym.kind || (nodeData ? nodeData.type : 'FUNCTION');
-            let label = (nodeData && nodeData.label) || sym.name || id;
-            let efname = '';
-            if (kind !== 'FILE_ENTITY') {
-                efname = (sym.file_path || '').split('/').pop() || '';
-            }
-            newElements.push({
-                group: 'nodes', data: {
-                    id, label, kind, shape: 'round-rectangle',
-                    file: sym.file_path || '', line: sym.line || 0,
-                    fan_in: fstat.fan_in || 0, fan_out: fstat.fan_out || 0,
-                    complexity: fstat.cyclomatic_complexity || 0,
-                    heat: heatVal, comment: sym.comment || '',
-                    fname: efname
+            if (!visibleNodeIds.has(id)) {
+                newCalleeIds.add(id);
+                visibleNodeIds.add(id);
+                const nodeData = fullGraphData.nodes.find(n => String(n.id) === id);
+                const sym = symbolMap[parseInt(id)] || {};
+                const fstat = statsMap[parseInt(id)] || {};
+                const heatVal = (fstat.fan_in || 0) / Math.max(maxFanIn, 1);
+                const kind = sym.kind || (nodeData ? nodeData.type : 'FUNCTION');
+                let label = (nodeData && nodeData.label) || sym.name || id;
+                let efname = '';
+                if (kind !== 'FILE_ENTITY') {
+                    efname = (sym.file_path || '').split('/').pop() || '';
                 }
-            });
+                newElements.push({
+                    group: 'nodes', data: {
+                        id, label, kind, shape: 'round-rectangle',
+                        file: sym.file_path || '', line: sym.line || 0,
+                        fan_in: fstat.fan_in || 0, fan_out: fstat.fan_out || 0,
+                        complexity: fstat.cyclomatic_complexity || 0,
+                        heat: heatVal, comment: sym.comment || '',
+                        fname: efname
+                    }
+                });
+            }
         });
-        newEdges.forEach((e, idx) => {
+        const addedEdgeIds = new Set();
+        allEdges.forEach((e, idx) => {
+            const eid = `e-lazy-${idx}-${nodeId}`;
             newElements.push({
                 group: 'edges', data: {
-                    id: `e-lazy-${idx}-${nodeId}`,
+                    id: eid,
                     source: String(e.source_id), target: String(e.target_id),
                     relation: e.relation || 'CALLS', weight: e.weight || 1
                 }
             });
+            addedEdgeIds.add(eid);
         });
         if (newElements.length === 0) return;
 
         cy.add(newElements);
 
-        calleeIds.forEach(id => {
+        // Mark leaf nodes among newly added callees only
+        newCalleeIds.forEach(id => {
             const hasOutgoing = fullGraphData.edges.some(e => String(e.source_id) === id);
             if (!hasOutgoing) cy.getElementById(id).data('isDeadEnd', true);
         });
 
+        // Position only newly added nodes
         const parentPos = cy.getElementById(nodeId).position();
         const radius = 150;
-        const calleeArray = Array.from(calleeIds);
-        const count = calleeArray.length;
-        const arcAngle = Math.PI * 0.6;
-        const startAngle = Math.PI / 2 - arcAngle / 2;
-        calleeArray.forEach((id, i) => {
-            const angle = startAngle + arcAngle * i / Math.max(count - 1, 1);
-            const node = cy.getElementById(id);
-            if (node.length) {
-                node.position({
-                    x: parentPos.x + radius * Math.cos(angle),
-                    y: parentPos.y + radius * Math.sin(angle)
-                });
-            }
-        });
+        const newCalleeArray = Array.from(newCalleeIds);
+        const count2 = newCalleeArray.length;
+        if (count2 > 0) {
+            const arcAngle = Math.PI * 0.6;
+            const startAngle = Math.PI / 2 - arcAngle / 2;
+            newCalleeArray.forEach((id, i) => {
+                const angle = startAngle + arcAngle * i / Math.max(count2 - 1, 1);
+                const node = cy.getElementById(id);
+                if (node.length) {
+                    node.position({
+                        x: parentPos.x + radius * Math.cos(angle),
+                        y: parentPos.y + radius * Math.sin(angle)
+                    });
+                }
+            });
+        }
 
-        const addedEdgeIds = new Set();
-        newElements.forEach(el => { if (el.group === 'edges') addedEdgeIds.add(el.data.id); });
-        expansionChildren.set(nodeId, { edgeIds: addedEdgeIds, nodeIds: calleeIds });
-
-        // Add file-label companions for expanded nodes
-        calleeIds.forEach(id => {
+        // Add file-label companions for newly added nodes only
+        newCalleeIds.forEach(id => {
             const n = cy.getElementById(id);
             const fn = n.data('fname');
             if (!fn) return;
@@ -245,6 +256,8 @@
                 position: { x: n.position().x, y: n.position().y + n.height() / 2 + 10 }
             });
         });
+
+        expansionChildren.set(nodeId, { edgeIds: addedEdgeIds, nodeIds: newCalleeIds });
     }
 
     function collapseNode(parentId) {
@@ -421,7 +434,8 @@
                         fullGraphData.edges.some(e => String(e.source_id) === nodeId);
                     if (hasOutgoing && !expandedNodeIds.has(nodeId)) {
                         expandNode(nodeId);
-                        return;
+                        // No new nodes added (shared children) → show details now
+                        if (expansionChildren.has(nodeId)) return;
                     }
 
                     // Leaf or already-expanded → show detail info box
