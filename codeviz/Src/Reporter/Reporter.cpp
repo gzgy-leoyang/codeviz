@@ -190,7 +190,7 @@ static const char* BRIDGE_JS = R"BRIDGE(
 var data=window.CODEVIZ_DATA,cy=null,cySide=null,currentCard='include',WEBGL_THRESHOLD=1000;
 var isLazyMode=false,fullGraphData=null,visibleNodeIds=new Set(),expandedNodeIds=new Set(),expansionChildren=new Map();
 function heatColor(v){var r=Math.round(v*220+35),g=Math.round((1-v)*150+30),b=Math.round((1-v)*180+30);return'rgb('+r+','+g+','+b+')';}
-function nodeShape(k){return k==='FILE_ENTITY'?'round-rectangle':'ellipse';}
+function nodeShape(k){return'round-rectangle';}
 function buildElements(graphData,symbols,stats){
 var elements=[],symbolMap={};symbols.forEach(function(s){symbolMap[s.symbol_id]=s;});
 var statsMap={};if(stats&&stats.function_stats){stats.function_stats.forEach(function(f){statsMap[f.function_id]=f;});}

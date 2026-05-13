@@ -26,7 +26,7 @@
         return `rgb(${r},${g},${b})`;
     }
 
-    function nodeShape(kind) { return kind === 'FILE_ENTITY' ? 'round-rectangle' : 'ellipse'; }
+    function nodeShape(kind) { return 'round-rectangle'; }
 
     function buildElements(graphData, symbols, stats) {
         const elements = [];
