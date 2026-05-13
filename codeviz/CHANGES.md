@@ -275,14 +275,20 @@
 
 #### 悬停高亮连线
 - 鼠标悬停节点时，其扇入/扇出连线高亮为 `#E1F656`（亮绿）
-- 鼠标移出后连线恢复样式表颜色（深色 `#504945` / 浅色 `#93a1a1`）
+- 鼠标悬停连线时，该连线及两端节点边框同时高亮为 `#E1F656`
+- 移出后恢复样式表颜色（深色 `#504945` / 浅色 `#93a1a1`）
+
+#### 标题栏精简
+- 删除副标题"源码可视化分析报告"，仅保留 "codeviz"
+- 元信息栏移除字段名（"项目:"、"生成时间:"、"输出:"），仅显示内容值
+- 删除"运行命令:"整行
 
 #### 文件变更总览
 
 | 文件 | 变更 |
 |------|------|
-| `Src/Reporter/Reporter.cpp` | tap/edge handler、entry shape+border、nodeShape、edge-info、dedup、light theme、expandNode 重构、hover 高亮 |
-| `Src/Template/cytoscape_bridge.js` | tap/edge handler、entry shape+border、nodeShape、external refs、theme toggle、expandNode 重构、hover 高亮 |
-| `Doc/Code_Visualization_Tool_Design_Spec.md` | 前端交互说明同步 |
+| `Src/Reporter/Reporter.cpp` | tap/edge handler、entry shape+border、nodeShape、edge-info、dedup、light theme、expandNode 重构、hover 高亮、标题栏精简 |
+| `Src/Template/cytoscape_bridge.js` | tap/edge handler、entry shape+border、nodeShape、external refs、theme toggle、expandNode 重构、hover 高亮、标题栏精简 |
+| `Doc/Code_Visualization_Tool_Design_Spec.md` | 前端交互说明同步（悬停高亮） |
 | `CHANGES.md` | 本文件 |
 

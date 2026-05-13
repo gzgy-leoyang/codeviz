@@ -548,6 +548,20 @@
                 cy.on('mouseout', 'node', function(evt) {
                     evt.target.connectedEdges().style('line-color', null);
                 });
+
+                // Hover: highlight endpoint nodes when hovering over edge
+                cy.on('mouseover', 'edge', function(evt) {
+                    const edge = evt.target;
+                    edge.style('line-color', '#E1F656');
+                    edge.source().style('border-color', '#E1F656');
+                    edge.target().style('border-color', '#E1F656');
+                });
+                cy.on('mouseout', 'edge', function(evt) {
+                    const edge = evt.target;
+                    edge.style('line-color', null);
+                    edge.source().style('border-color', null);
+                    edge.target().style('border-color', null);
+                });
             } else {
                 // Right panel: basic click to show name
                 cySide = instance;
@@ -698,11 +712,17 @@
     function updateMeta() {
         const meta = data.metadata || {};
         const mi = document.getElementById('meta-info');
-        if (mi) mi.textContent = '项目: ' + (meta.project_name || '-') + ' | 生成时间: ' + (meta.generated_at || '-');
-        const cl = document.getElementById('cmd-line');
-        if (cl && meta.command_line) {
-            cl.textContent = '运行命令: ' + meta.command_line;
-            cl.style.display = 'block';
+        if (mi) {
+            const entrySym = (data.symbols || []).find(s => s.symbol_id === meta.entry_function_id);
+            const entryName = entrySym ? entrySym.name : (meta.entry_function_id || '-');
+            const cli = meta.command_line || '';
+            const depthMatch = cli.match(/-d\s+(\d+)/);
+            const outMatch = cli.match(/-o\s+(\S+)/);
+            mi.textContent = (meta.project_name || '-')
+                + ' | ' + (meta.generated_at || '-')
+                + ' | 入口: ' + entryName
+                + ' | 深度: ' + (depthMatch ? depthMatch[1] : '-')
+                + ' | ' + (outMatch ? outMatch[1] : '-');
         }
     }
 

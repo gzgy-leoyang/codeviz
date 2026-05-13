@@ -25,7 +25,7 @@ static const char* HTML_TEMPLATE = R"HTML(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>codeviz - 源码可视化分析报告</title>
+    <title>codeviz</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #282828; color: #ebdbb2; overflow: hidden; height: 100vh; }
@@ -33,7 +33,6 @@ static const char* HTML_TEMPLATE = R"HTML(
         #header .left { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
         #header .left h1 { font-size: 16px; color: #d65d0e; white-space: nowrap; }
         #header .left .meta { font-size: 11px; color: #bdae93; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        #header .left #cmd-line { font-size: 11px; color: #7c6f64; }
         #header .right { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
         #main { display: flex; height: calc(100vh - 60px); }
         #call-graph-area { width: 70%; position: relative; min-width: 0; }
@@ -74,7 +73,6 @@ static const char* HTML_TEMPLATE = R"HTML(
         body.light #header { background: #eee8d5; border-color: #93a1a1; }
         body.light #header .left h1 { color: #586e75; }
         body.light #header .left .meta { color: #839496; }
-        body.light #header .left #cmd-line { color: #93a1a1; }
         body.light #header .left h1 span { color: #839496 !important; }
         body.light .btn { background: #eee8d5; color: #586e75; border-color: #93a1a1; font-size: 20px; line-height: 1; }
         body.light .btn:hover { background: #cb4b16; color: #fdf6e3; border-color: #cb4b16; }
@@ -105,9 +103,8 @@ static const char* HTML_TEMPLATE = R"HTML(
 <body>
     <div id="header">
         <div class="left">
-            <h1>codeviz <span style="color:#bdae93;font-size:13px;">源码可视化分析报告</span></h1>
+            <h1>codeviz</h1>
             <div class="meta" id="meta-info">加载中...</div>
-            <div class="meta" id="cmd-line" style="display:none;"></div>
         </div>
         <div class="right">
             <button class="btn" onclick="resetLayout()" title="重置布局">⟳</button>
@@ -260,6 +257,8 @@ cy.on('tap',function(evt){if(evt.target===cy){document.getElementById('node-info
 cy.on('cxttap','node',function(evt){var nid=evt.target.id();if(isLazyMode&&expansionChildren.has(nid))collapseNode(nid);});
 cy.on('mouseover','node',function(evt){evt.target.connectedEdges().style('line-color','#E1F656');});
 cy.on('mouseout','node',function(evt){evt.target.connectedEdges().style('line-color',null);});
+cy.on('mouseover','edge',function(evt){evt.target.style('line-color','#E1F656');evt.target.source().style('border-color','#E1F656');evt.target.target().style('border-color','#E1F656');});
+cy.on('mouseout','edge',function(evt){evt.target.style('line-color',null);evt.target.source().style('border-color',null);evt.target.target().style('border-color',null);});
 }else{cySide=inst;
 cySide.on('tap','node',function(evt){var d=evt.target.data(),area=document.getElementById('call-graph-area'),rect=area.getBoundingClientRect(),bb=evt.target.renderedBoundingBox(),info=document.getElementById('node-info'),ox=bb.x2-rect.left+6,oy=bb.y2-rect.top+6;info.style.left=Math.min(ox,Math.max(rect.width-380,0))+'px';info.style.top=Math.min(oy,Math.max(rect.height-260,0))+'px';info.style.display='block';document.getElementById('ni-name').textContent=d.label;document.getElementById('ni-kind').textContent=d.kind;document.getElementById('ni-file').textContent=(d.file||'').split('/').pop();document.getElementById('ni-line').textContent=d.line;document.getElementById('ni-fanin').textContent=d.fan_in||'-';document.getElementById('ni-fanout').textContent=d.fan_out||'-';document.getElementById('ni-cc').textContent=d.complexity||'-';var nc=document.getElementById('ni-comment');if(d.comment){nc.textContent=d.comment;nc.style.display='block';}else{nc.style.display='none';}document.getElementById('ni-expand-row').style.display='none';});}
 }catch(e){console.error('Cytoscape init failed:',e);if(isCall)container.innerHTML='<div style="padding:20px;color:#d65d0e;">图形渲染初始化失败</div>';}}
@@ -288,7 +287,7 @@ var anoList=document.getElementById('ano-list'),ano=data.anomalies||{};
 if(!(ano.circular_includes||[]).length){anoList.innerHTML='<p style="color:#b8bb26;font-size:13px;">未检测到循环包含</p>';}
 else{(ano.circular_includes||[]).forEach(function(ci){var d=document.createElement('div');d.className='anomaly';d.textContent='循环包含: '+ci.file_cycle.join(' → ');anoList.appendChild(d);});}
 }
-function updateMeta(){var meta=data.metadata||{},mi=document.getElementById('meta-info');if(mi)mi.textContent='项目: '+(meta.project_name||'-')+' | 生成时间: '+(meta.generated_at||'-');var cl=document.getElementById('cmd-line');if(cl&&meta.command_line){cl.textContent='运行命令: '+meta.command_line;cl.style.display='block';}}
+function updateMeta(){var meta=data.metadata||{},mi=document.getElementById('meta-info');if(mi){var es=(data.symbols||[]).find(function(s){return s.symbol_id===meta.entry_function_id;});var en=es?es.name:(meta.entry_function_id||'-'),cli=meta.command_line||'',dm=cli.match(/-d\s+(\d+)/),om=cli.match(/-o\s+(\S+)/);mi.textContent=(meta.project_name||'-')+' | '+(meta.generated_at||'-')+' | 入口: '+en+' | 深度: '+(dm?dm[1]:'-')+' | '+(om?om[1]:'-');}}
 var isLight=false;window.toggleTheme=function(){isLight=!isLight;document.body.classList.toggle('light',isLight);var btn=document.getElementById('theme-btn');if(btn)btn.textContent=isLight?'☾':'☀';applyCyTheme(isLight);};function applyCyTheme(light){var insts=[];if(cy)insts.push(cy);if(cySide)insts.push(cySide);var dc={bg:'#3c3836',edge:'#504945',text:'#bdae93',nodeBorder:'#d65d0e',selBorder:'#fe8019',entryText:'#fabd2f',deadBorder:'#928374',headBorder:'#83a598',srcBorder:'#b8bb26'},lc={bg:'#eee8d5',edge:'#93a1a1',text:'#657b83',nodeBorder:'#cb4b16',selBorder:'#268bd2',entryText:'#b58900',deadBorder:'#586e75',headBorder:'#268bd2',srcBorder:'#859900'},c=light?lc:dc;insts.forEach(function(inst){inst.style().selector('node').style({'background-color':c.bg,color:c.text,'border-color':c.nodeBorder}).update();inst.style().selector('edge').style({'line-color':c.edge,'target-arrow-color':c.nodeBorder}).update();inst.style().selector('node[isEntry]').style({color:c.entryText}).update();inst.style().selector('node[isDeadEnd]').style({'border-color':c.deadBorder}).update();inst.style().selector('node[fileType="header"]').style({'border-color':c.headBorder}).update();inst.style().selector('node[fileType="source"]').style({'border-color':c.srcBorder}).update();inst.style().selector('node.file-label').style({color:c.deadBorder}).update();});}
 function initSplitter(){var divider=document.getElementById('divider'),left=document.getElementById('call-graph-area'),right=document.getElementById('card-panel');if(!divider||!left||!right)return;divider.addEventListener('mousedown',function(e){e.preventDefault();divider.classList.add('active');var startX=e.clientX,leftW=left.getBoundingClientRect().width,totalW=left.parentElement.getBoundingClientRect().width;function onMove(ev){var pct=((leftW+ev.clientX-startX)/totalW)*100;if(pct<20||pct>80)return;left.style.width=pct+'%';right.style.width=(100-pct)+'%';if(cy)cy.resize();if(cySide)cySide.resize();}function onUp(){divider.classList.remove('active');document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);});}
 document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSidebar();initCallGraphLazy();initSplitter();switchCard('include');});
