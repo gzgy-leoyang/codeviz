@@ -2,7 +2,7 @@
 
 > 首次提交: 2026-04-27
 > 代码重组织: 2026-05-02 (21251c3)
-> 最近更新: 2026-05-12（第二轮）
+> 最近更新: 2026-05-13（第三轮）
 
 ---
 
@@ -292,3 +292,37 @@
 | `Doc/Code_Visualization_Tool_Design_Spec.md` | 前端交互说明同步（悬停高亮） |
 | `CHANGES.md` | 本文件 |
 
+
+### 十一、2026-05-13 — 设计规格文档拆分解构 + check_sync.py 独立检查工具
+
+共 **1 个提交** + 工作区文档重构。
+
+#### 1. 添加 check_sync.py 独立检查工具
+- **提交**: `c998815`
+- **文件**: `extra-tool/check_sync.py`（新文件，401 行）
+- **内容**: 独立 Python 脚本，检查源码和生成的 HTML 报告之间的一致性，作为独立验证工具
+
+#### 2. 设计规格文档拆分解构
+- 将庞大的单体设计规格 `Doc/Code_Visualization_Tool_Design_Spec.md`（1461 行）拆分为多个专注的独立文档：
+  - `Doc/prd.md`（111 行）— 需求定义与场景分析
+  - `Doc/architecture.md`（256 行）— 系统架构与 4+1 视图
+  - `Doc/data_types.md`（362 行）— 核心数据结构与接口定义
+  - `Doc/example.md`（127 行）— 使用示例
+  - `Doc/tech_selection.md`（62 行）— 技术选型对比
+  - `Doc/modules/`（8 个文件，共 495 行）— 各模块详细设计文档
+
+#### 文件变更总览
+
+| 文件 | 变更 |
+|------|------|
+| `Doc/Code_Visualization_Tool_Design_Spec.md` | **删除**（1461 行），拆分为多个独立 Doc 文件 |
+| `Doc/prd.md` | **新文件** 111 行 |
+| `Doc/architecture.md` | **新文件** 256 行 |
+| `Doc/data_types.md` | **新文件** 362 行 |
+| `Doc/example.md` | **新文件** 127 行 |
+| `Doc/tech_selection.md` | **新文件** 62 行 |
+| `Doc/modules/*.md` | **8 个新文件** 共 495 行 |
+| `extra-tool/check_sync.py` | **新文件** 401 行 |
+| `.claude/commands/review-project.md` | **新文件** |
+| `.claude/commands/verify.md` | **新文件** |
+| `CLAUDE.md` | **新文件** |
