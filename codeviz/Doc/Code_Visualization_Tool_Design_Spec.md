@@ -1297,7 +1297,7 @@ public:
 | :--- | :--- |
 | std::string load_template() | 加载内嵌的 HTML 骨架模板字符串（C++ string literal）|
 | json build_json(const std::vector<SymbolMetadata>& symbols, const AnalysisStats& stats, const AnalysisContext& ctx) | 构建完整的 JSON 数据对象 |
-| json convert_call_graph(const std::vector<CallEdge>& edges, const std::vector<Symbol>& symbols) | 将调用边转换为 Cytoscape.js nodes/edges 格式 |
+| json convert_call_graph(const std::vector<CallEdge>& edges, const std::vector<Symbol>& symbols) | 将调用边转换为 Cytoscape.js nodes/edges 格式；按 (caller_id, callee_id) 去重合并 weight |
 | json convert_include_graph(const std::vector<IncludeEdge>& edges, const std::vector<FileSymbol>& files, const std::vector<Symbol>& symbols) | 将包含边转换为 Cytoscape.js nodes/edges 格式 |
 | json convert_type_graph(const std::vector<TypeDependencyEdge>& edges, const std::vector<CompositeSymbol>& composites, const std::vector<Symbol>& symbols) | 将类型依赖边转换为 Cytoscape.js nodes/edges 格式 |
 | json build_hotspots(const AnalysisStats& stats) | 构建热力图数据（文件和函数的热力值及颜色映射） |
@@ -1318,8 +1318,10 @@ public:
 4. 返回 HTMLReport，包含完整 HTML 字符串。
 
 ##### 前端交互说明
-- **节点显示**：所有节点统一使用圆角矩形（round-rectangle），宽度自适应文字内容；函数节点标签显示"函数名\n(文件名)"，包含图节点只显示文件名。
-- **节点信息面板**：选中节点后，视图左上角显示信息框，包含类型、文件、行号、被调用/调用数、圈复杂度，以及 Doxygen 注释内容（若存在）。信息框使用 `#D5EE2E` 边框色与选中节点关联。
+- **节点形状**：函数节点统一使用圆形（ellipse），文件节点（FILE_ENTITY）使用圆角矩形（round-rectangle）；宽度自适应文字内容；函数节点标签显示"函数名\n(文件名)"，包含图节点只显示文件名。入口节点额外使用粗体黄色文字（不设独立边框色，边框与其他节点一致）。
+- **节点点击**：非叶节点首次单击展开子节点（径向扇形定位，半径 150px，108° 向下弧），再次单击显示详情框；叶节点单击直接显示详情框。右击已展开节点可折叠其子图。
+- **节点信息面板**：点击节点后，视图左上角显示信息框，包含类型、文件、行号、被调用/调用数、圈复杂度、展开状态，以及 Doxygen 注释内容（若存在）。无子节点但有系统库调用的函数显示"系统函数调用 (N): xxx, yyy"。信息框使用 `#fe8019` 边框色。
+- **边信息面板**：单击调用边弹出信息框，展示 `caller → callee` 标题及被调用函数的返回类型和参数列表。
 - **侧边栏**：位于视图右侧，折叠后仅保留展开按钮（位于 canvas 区域右上角），点击展开后显示 280px 宽的符号搜索列表。
 - **性能降级**：节点超过 1000 时自动启用大图模式（hideEdgesOnViewport、motionBlur）。
 

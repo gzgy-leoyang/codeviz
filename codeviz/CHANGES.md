@@ -238,3 +238,45 @@
 #### 文件名显示
 - 函数节点：函数名白色 `#ebdbb2`，文件名灰色 `#928374` 单独显示在节点下方
 - 文件名格式采用 `fileName.ext`，无括号/横线包裹
+
+---
+
+### 十、2026-05-13 — 节点交互优化 + 边信息面板 + 圆形函数节点（dev 分支）
+
+#### 节点点击交互改进
+- **非叶节点**：首次单击仅展开子节点，再次单击才显示详情框
+- **叶节点**：单击直接显示详情框
+- 移除了旧版每次单击都同时展开 + 显示详情的逻辑
+
+#### 边信息面板
+- 单击调用边（箭头）弹出 `#edge-info` 面板，显示 `caller → callee` 标题
+- 面板展示被调用函数的返回类型、参数列表（带序号）或"参数: 无"
+- 面板在 light 主题下同步适配 Solarized 配色
+
+#### 外部系统调用显示
+- 无调用图子节点但有系统库调用的函数，其节点信息框中显示"系统函数调用 (N): xxx, yyy"
+- 此类节点在 `expandNode` 中被标记为「已展开」状态
+
+#### 函数节点形状统一为圆形
+- 与设计规格 DR_1 (2.5.2.1) 对齐：所有函数节点改为 `ellipse`
+- `FILE_ENTITY` 类型仍使用 `round-rectangle`
+- 入口节点形状同步改为 `ellipse`
+
+#### 入口节点边框归一化
+- 移除入口节点特制的 `border-width: 3` / `border-color: #fabd2f`
+- 入口节点边框与其他节点一致（1px, 主题色），仅保留粗体黄色文字区分
+- 主题切换 `applyCyTheme` 同步移除入口边框设置
+
+#### 调用边去重
+- `convert_call_graph` 使用 `std::map<pair<uint32_t,uint32_t>, uint32_t>` 按 `(caller_id, callee_id)` 合并重复调用边
+- 合并后的 `weight` 为各边 `call_count` 之和
+
+#### 文件变更总览
+
+| 文件 | 变更 |
+|------|------|
+| `Src/Reporter/Reporter.cpp` | tap/edge handler、entry shape+border、nodeShape、edge-info、dedup、light theme |
+| `Src/Template/cytoscape_bridge.js` | tap/edge handler、entry shape+border、nodeShape、external refs、theme toggle |
+| `Doc/Code_Visualization_Tool_Design_Spec.md` | 前端交互说明同步 |
+| `CHANGES.md` | 本文件 |
+

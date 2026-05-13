@@ -26,7 +26,7 @@
         return `rgb(${r},${g},${b})`;
     }
 
-    function nodeShape(kind) { return 'round-rectangle'; }
+    function nodeShape(kind) { return kind === 'FILE_ENTITY' ? 'round-rectangle' : 'ellipse'; }
 
     function buildElements(graphData, symbols, stats) {
         const elements = [];
@@ -113,7 +113,7 @@
         visibleNodeIds.add(String(entryId));
         initCytoscape([{
             group: 'nodes', data: {
-                id: String(entryId), label, kind, shape: 'round-rectangle',
+                id: String(entryId), label, kind, shape: 'ellipse',
                 file: sym.file_path || '', line: sym.line || 0,
                 fan_in: fstat.fan_in || 0, fan_out: fstat.fan_out || 0,
                 complexity: fstat.cyclomatic_complexity || 0,
@@ -128,14 +128,31 @@
         }
     }
 
+    // Build name->id map from symbols once
+    const symNameToId = {};
+    (data.symbols || []).forEach(function(s) { symNameToId[s.name] = s.symbol_id; });
+
     function expandNode(nodeId) {
         if (!isLazyMode || expandedNodeIds.has(nodeId) || !fullGraphData) return;
         const newEdges = fullGraphData.edges.filter(e =>
             String(e.source_id) === nodeId && !visibleNodeIds.has(String(e.target_id))
         );
         if (newEdges.length === 0) {
+            // Check if node has external (system) calls
+            const nodeName = (data.symbols || []).find(function(s) { return s.symbol_id === parseInt(nodeId); });
+            const extCalls = (data.external_refs || []).filter(function(r) {
+                return r.caller_name === (nodeName ? nodeName.name : '');
+            });
             const expandEl = document.getElementById('ni-expand');
-            if (expandEl && expandedNodeIds.has(nodeId)) expandEl.textContent = '已展开';
+            if (extCalls.length > 0) {
+                expandedNodeIds.add(nodeId);
+                if (expandEl) expandEl.textContent = '已展开';
+                const nc = document.getElementById('ni-comment');
+                nc.textContent = '系统函数调用 (' + extCalls.length + '): ' + extCalls.map(function(r) { return r.callee_name; }).join(', ');
+                nc.style.display = 'block';
+                return;
+            }
+            if (expandedNodeIds.has(nodeId) && expandEl) expandEl.textContent = '已展开';
             return;
         }
         expandedNodeIds.add(nodeId);
@@ -312,7 +329,6 @@
                     },
                     {
                         selector: 'node[isEntry]', style: {
-                            'border-width': 3, 'border-color': '#fabd2f',
                             color: '#fabd2f', 'font-weight': 'bold'
                         }
                     },
@@ -390,9 +406,25 @@
             if (isCallGraph) {
                 cy = instance;
 
+                // Helper: find symbol by ID
+                function symById(id) {
+                    return (data.symbols || []).find(function(s) { return s.symbol_id === id; }) || {};
+                }
+
                 cy.on('tap', 'node', function(evt) {
                     const node = evt.target;
                     const d = node.data();
+                    const nodeId = node.id();
+
+                    // Non-leaf + not expanded → expand only, no info box
+                    const hasOutgoing = isLazyMode && fullGraphData &&
+                        fullGraphData.edges.some(e => String(e.source_id) === nodeId);
+                    if (hasOutgoing && !expandedNodeIds.has(nodeId)) {
+                        expandNode(nodeId);
+                        return;
+                    }
+
+                    // Leaf or already-expanded → show detail info box
                     const container = document.getElementById('call-graph-area');
                     const rect = container.getBoundingClientRect();
                     const bb = node.renderedBoundingBox();
@@ -402,6 +434,7 @@
                     info.style.left = Math.min(offsetX, Math.max(rect.width - 380, 0)) + 'px';
                     info.style.top = Math.min(offsetY, Math.max(rect.height - 260, 0)) + 'px';
                     info.style.display = 'block';
+                    document.getElementById('edge-info').style.display = 'none';
                     document.getElementById('ni-name').textContent = d.label;
                     document.getElementById('ni-kind').textContent = d.kind;
                     document.getElementById('ni-file').textContent = (d.file || '').split('/').pop();
@@ -409,6 +442,7 @@
                     document.getElementById('ni-fanin').textContent = d.fan_in;
                     document.getElementById('ni-fanout').textContent = d.fan_out;
                     document.getElementById('ni-cc').textContent = d.complexity;
+                    document.getElementById('ni-expand-row').style.display = 'none';
                     const nc = document.getElementById('ni-comment');
                     if (d.comment) { nc.textContent = d.comment; nc.style.display = 'block'; }
                     else { nc.style.display = 'none'; }
@@ -416,11 +450,11 @@
                     const expandRow = document.getElementById('ni-expand-row');
                     const expandEl = document.getElementById('ni-expand');
                     if (isLazyMode && fullGraphData) {
-                        if (expandedNodeIds.has(node.id())) {
+                        if (expandedNodeIds.has(nodeId)) {
                             expandEl.textContent = '已展开';
                         } else {
                             const calleeCount = fullGraphData.edges.filter(e =>
-                                String(e.source_id) === node.id()
+                                String(e.source_id) === nodeId
                             ).length;
                             expandEl.textContent = calleeCount > 0 ? calleeCount + ' 个被调用函数' : '无调用关系';
                         }
@@ -428,11 +462,64 @@
                     } else if (expandRow) {
                         expandRow.style.display = 'none';
                     }
-                    if (isLazyMode) expandNode(node.id());
+
+                    // Show external/system call info for this node
+                    var extCalls = (data.external_refs || []).filter(function(r) {
+                        return r.caller_name === d.label.split('\n')[0];
+                    });
+                    if (extCalls.length > 0) {
+                        var nc2 = document.getElementById('ni-comment');
+                        nc2.textContent = '系统函数调用 (' + extCalls.length + '): ' + extCalls.map(function(r) { return r.callee_name; }).join(', ');
+                        nc2.style.display = 'block';
+                    }
+                });
+
+                // Edge click: show call parameters in edge-info panel
+                cy.on('tap', 'edge', function(evt) {
+                    const edge = evt.target;
+                    const ed = edge.data();
+                    const srcId = parseInt(ed.source);
+                    const tgtId = parseInt(ed.target);
+                    const caller = symById(srcId);
+                    const callee = symById(tgtId);
+                    const cName = caller.name || ('ID_' + srcId);
+                    const tName = callee.name || ('ID_' + tgtId);
+
+                    const ei = document.getElementById('edge-info');
+                    const mp = edge.midpoint();
+                    const container = document.getElementById('call-graph-area');
+                    const rect = container.getBoundingClientRect();
+                    const cyRect = document.getElementById('cy-call').getBoundingClientRect();
+                    const zoomLvl = cy.zoom();
+                    const pan = cy.pan();
+                    const rpX = mp.x * zoomLvl + pan.x + cyRect.left;
+                    const rpY = mp.y * zoomLvl + pan.y + cyRect.top;
+                    ei.style.left = Math.min(rpX - rect.left + 8, Math.max(rect.width - 400, 0)) + 'px';
+                    ei.style.top = Math.min(rpY - rect.top + 8, Math.max(rect.height - 200, 0)) + 'px';
+
+                    document.getElementById('ei-header').textContent = cName + ' → ' + tName;
+
+                    var body = '';
+                    var params = callee.parameters || [];
+                    if (callee.return_type) body += '返回: ' + callee.return_type + '\n';
+                    if (params.length > 0) {
+                        body += '参数 (' + params.length + '):';
+                        params.forEach(function(p, i) {
+                            body += '\n  ' + (i+1) + '. ' + p;
+                        });
+                    } else {
+                        body += '参数: 无';
+                    }
+                    document.getElementById('ei-body').textContent = body;
+                    ei.style.display = 'block';
+                    document.getElementById('node-info').style.display = 'none';
                 });
 
                 cy.on('tap', function(evt) {
-                    if (evt.target === cy) document.getElementById('node-info').style.display = 'none';
+                    if (evt.target === cy) {
+                        document.getElementById('node-info').style.display = 'none';
+                        document.getElementById('edge-info').style.display = 'none';
+                    }
                 });
 
                 cy.on('cxttap', 'node', function(evt) {
@@ -606,20 +693,20 @@
         const dark = {
             bg: '#3c3836', edge: '#504945', text: '#bdae93',
             nodeBorder: '#d65d0e', selBorder: '#fe8019',
-            entryBorder: '#fabd2f', entryText: '#fabd2f',
+            entryText: '#fabd2f',
             deadBorder: '#928374', headBorder: '#83a598', srcBorder: '#b8bb26'
         };
         const light = {
             bg: '#eee8d5', edge: '#93a1a1', text: '#657b83',
             nodeBorder: '#cb4b16', selBorder: '#268bd2',
-            entryBorder: '#b58900', entryText: '#b58900',
+            entryText: '#b58900',
             deadBorder: '#586e75', headBorder: '#268bd2', srcBorder: '#859900'
         };
         const c = light ? light : dark;
         cyInsts.forEach(inst => {
             inst.style().selector('node').style({ 'background-color': c.bg, color: c.text, 'border-color': c.nodeBorder }).update();
             inst.style().selector('edge').style({ 'line-color': c.edge, 'target-arrow-color': c.nodeBorder }).update();
-            inst.style().selector('node[isEntry]').style({ 'border-color': c.entryBorder, color: c.entryText }).update();
+            inst.style().selector('node[isEntry]').style({ color: c.entryText }).update();
             inst.style().selector('node[isDeadEnd]').style({ 'border-color': c.deadBorder }).update();
             inst.style().selector('node[fileType="header"]').style({ 'border-color': c.headBorder }).update();
             inst.style().selector('node[fileType="source"]').style({ 'border-color': c.srcBorder }).update();
