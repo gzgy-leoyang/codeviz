@@ -304,11 +304,11 @@
 
 #### 2. 设计规格文档拆分解构
 - 将庞大的单体设计规格 `Doc/Code_Visualization_Tool_Design_Spec.md`（1461 行）拆分为多个专注的独立文档：
-  - `Doc/prd.md`（111 行）— 需求定义与场景分析
-  - `Doc/architecture.md`（256 行）— 系统架构与 4+1 视图
-  - `Doc/data_types.md`（362 行）— 核心数据结构与接口定义
-  - `Doc/example.md`（127 行）— 使用示例
-  - `Doc/tech_selection.md`（62 行）— 技术选型对比
+  - `Doc/00_prd.md`（111 行）— 需求定义与场景分析
+  - `Doc/01_architecture.md`（256 行）— 系统架构与 4+1 视图
+  - `Doc/03_data_types.md`（362 行）— 核心数据结构与接口定义
+  - `Doc/04_example.md`（127 行）— 使用示例
+  - `Doc/02_tech_selection.md`（62 行）— 技术选型对比
   - `Doc/modules/`（8 个文件，共 495 行）— 各模块详细设计文档
 
 #### 文件变更总览
@@ -316,11 +316,11 @@
 | 文件 | 变更 |
 |------|------|
 | `Doc/Code_Visualization_Tool_Design_Spec.md` | **删除**（1461 行），拆分为多个独立 Doc 文件 |
-| `Doc/prd.md` | **新文件** 111 行 |
-| `Doc/architecture.md` | **新文件** 256 行 |
-| `Doc/data_types.md` | **新文件** 362 行 |
-| `Doc/example.md` | **新文件** 127 行 |
-| `Doc/tech_selection.md` | **新文件** 62 行 |
+| `Doc/00_prd.md` | **新文件** 111 行 |
+| `Doc/01_architecture.md` | **新文件** 256 行 |
+| `Doc/03_data_types.md` | **新文件** 362 行 |
+| `Doc/04_example.md` | **新文件** 127 行 |
+| `Doc/02_tech_selection.md` | **新文件** 62 行 |
 | `Doc/modules/*.md` | **8 个新文件** 共 495 行 |
 | `extra-tool/check_sync.py` | **新文件** 401 行 |
 | `.claude/commands/review-project.md` | **新文件** |
@@ -361,9 +361,9 @@
 - 捕获并修复 `ParserFrontend` 中 `current_composite_` 指针在 vector 扩容后的 **heap-use-after-free**（改为索引访问）
 
 #### 5. 文档同步
-- `Doc/unit-test.md` — 完整测试方案文档（系统框架、运行视图、全部用例表）
-- `Doc/architecture.md` — 3.9 测试系统章节（策略、构建流程图、测试元数据表）
-- `Doc/prd.md` — IR_8 测试需求（4 SR / 7 DR）
+- `Doc/05_unit-test.md` — 完整测试方案文档（系统框架、运行视图、全部用例表）
+- `Doc/01_architecture.md` — 3.9 测试系统章节（策略、构建流程图、测试元数据表）
+- `Doc/00_prd.md` — IR_8 测试需求（4 SR / 7 DR）
 
 #### 文件变更总览
 
@@ -382,11 +382,11 @@
 | `Test/test_compdb_parser.cpp` | **新文件** — CompDBParser 测试（4 用例） |
 | `Src/main.cpp` | **新文件** — main() 独立文件 |
 | `3rdparty/doctest/doctest.h` | **新文件** — 测试框架 |
-| `Doc/unit-test.md` | **新文件** — 测试方案文档 |
+| `Doc/05_unit-test.md` | **新文件** — 测试方案文档 |
 | `Src/CLI/CLI.cpp` | **修改** — 移除 main() |
 | `Src/Parser/ParserFrontend.h` | **修改** — current_composite_ → 索引 |
 | `Src/Parser/ParserFrontend.cpp` | **修复** — heap-use-after-free |
-| `Doc/architecture.md` | **修改** — 新增 3.9 测试系统章节 |
-| `Doc/prd.md` | **修改** — 新增 IR_8 测试需求 |
+| `Doc/01_architecture.md` | **修改** — 新增 3.9 测试系统章节 |
+| `Doc/00_prd.md` | **修改** — 新增 IR_8 测试需求 |
 | `CMakeLists.txt` | **修改** — BUILD_TESTING + Sanitizer |
 | `build.sh` | **修改** — 集成 ctest + test_project |
