@@ -226,8 +226,8 @@ void ParserFrontend::traverse_cst(TSNode node, FileParseResult& result,
         strcmp(type, "conditional_expression") == 0)) {
         current_func->branch_count++;
     } else if (strcmp(type, "field_declaration") == 0) {
-        if (current_composite_) {
-            visit_field_declaration(node, *current_composite_, source);
+        if (current_composite_idx_ != SIZE_MAX) {
+            visit_field_declaration(node, result.symbols[current_composite_idx_], source);
         }
         return;
     } else if (strcmp(type, "struct_specifier") == 0) {
@@ -414,10 +414,10 @@ void ParserFrontend::visit_struct_specifier(TSNode node,
     }
     if (!ts_node_is_null(field_list)) {
         current_access_ = AccessSpecifier::PUBLIC;
-        current_composite_ = &result.symbols.back();
+        current_composite_idx_ = result.symbols.size() - 1;
         last_comment_.clear();  // 防止结构体体内注释泄漏
         traverse_cst(field_list, result, source, scope, nullptr);
-        current_composite_ = nullptr;
+        current_composite_idx_ = SIZE_MAX;
     }
     scope.pop_back();
 }
@@ -481,10 +481,10 @@ void ParserFrontend::visit_class_specifier(TSNode node,
     }
     if (!ts_node_is_null(field_list)) {
         current_access_ = AccessSpecifier::PRIVATE;
-        current_composite_ = &result.symbols.back();
+        current_composite_idx_ = result.symbols.size() - 1;
         last_comment_.clear();  // 防止类体内注释泄漏
         traverse_cst(field_list, result, source, scope, nullptr);
-        current_composite_ = nullptr;
+        current_composite_idx_ = SIZE_MAX;
     }
     scope.pop_back();
 }

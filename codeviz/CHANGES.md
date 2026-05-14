@@ -2,7 +2,7 @@
 
 > 首次提交: 2026-04-27
 > 代码重组织: 2026-05-02 (21251c3)
-> 最近更新: 2026-05-13（第三轮）
+> 最近更新: 2026-05-14（第四轮 — 单元测试体系）
 
 ---
 
@@ -326,3 +326,67 @@
 | `.claude/commands/review-project.md` | **新文件** |
 | `.claude/commands/verify.md` | **新文件** |
 | `CLAUDE.md` | **新文件** |
+
+### 十二、2026-05-14 — 单元测试体系（全模块覆盖）
+
+共 **58 个测试用例**，**136 个断言**，覆盖全部 8 个模块。
+
+#### 1. 测试基础设施搭建
+- **提交**: 工作区未提交
+- **内容**:
+  - 引入 **doctest** 单头文件测试框架（`3rdparty/doctest/doctest.h`）
+  - 源码改为 OBJECT 库（`codeviz_objlib`），主程序和测试目标共用编译产物
+  - `main()` 从 `Src/CLI/CLI.cpp` 分离到独立 `Src/main.cpp`
+  - 根 `CMakeLists.txt` 添加 `BUILD_TESTING` 选项
+
+#### 2. 构建集成
+- **文件**: `build.sh`
+- **内容**: 构建完成后自动执行 `ctest --output-on-failure`，随后运行 test_project 集成分析
+
+#### 3. 各模块测试
+
+| 模块 | 测试文件 | 用例数 | 核心验证点 |
+|------|---------|-------|-----------|
+| CLI | `test_cli.cpp` | 17 | 参数解析/校验、文件扫描、只读读取、目录创建 |
+| Analyzer | `test_analyzer.cpp` | 5 | 圈复杂度公式、扇入扇出、文件统计、循环检测 |
+| GraphBuilder | `test_graph_builder.cpp` | 6 | BFS 深度、扇入扇出计算、完整边保留、异常输入 |
+| Indexer | `test_indexer.cpp` | 5 | 符号 ID、调用边、包含边、同名合并 |
+| Reporter | `test_reporter.cpp` | 5 | HTML 结构、JSON 序列化、统计输出、边去重 |
+| ParserFrontend | `test_parser.cpp` | 7 | 函数/宏/结构体/类解析、#include |
+| CMakeParser | `test_cmake_parser.cpp` | 9 | project/target/链接库/编译器/子目录 |
+| CompDBParser | `test_compdb_parser.cpp` | 4 | 多条目、-D/-I 提取、文件不存在容错 |
+
+#### 4. Sanitizer 集成
+- Debug 构建启用 **AddressSanitizer + UndefinedBehaviorSanitizer**
+- 捕获并修复 `ParserFrontend` 中 `current_composite_` 指针在 vector 扩容后的 **heap-use-after-free**（改为索引访问）
+
+#### 5. 文档同步
+- `Doc/unit-test.md` — 完整测试方案文档（系统框架、运行视图、全部用例表）
+- `Doc/architecture.md` — 3.9 测试系统章节（策略、构建流程图、测试元数据表）
+- `Doc/prd.md` — IR_8 测试需求（4 SR / 7 DR）
+
+#### 文件变更总览
+
+| 文件 | 变更 |
+|------|------|
+| `Src/CMakeLists.txt` | **重构** — 源码改为 OBJECT 库，主程序链接 |
+| `Test/CMakeLists.txt` | **新文件** — 测试构建配置 |
+| `Test/test_main.cpp` | **新文件** — doctest 入口 |
+| `Test/test_cli.cpp` | **新文件** — CLI 测试（17 用例） |
+| `Test/test_analyzer.cpp` | **新文件** — Analyzer 测试（5 用例） |
+| `Test/test_graph_builder.cpp` | **新文件** — GraphBuilder 测试（6 用例） |
+| `Test/test_indexer.cpp` | **新文件** — Indexer 测试（5 用例） |
+| `Test/test_reporter.cpp` | **新文件** — Reporter 测试（5 用例） |
+| `Test/test_parser.cpp` | **新文件** — ParserFrontend 测试（7 用例） |
+| `Test/test_cmake_parser.cpp` | **新文件** — CMakeParser 测试（9 用例） |
+| `Test/test_compdb_parser.cpp` | **新文件** — CompDBParser 测试（4 用例） |
+| `Src/main.cpp` | **新文件** — main() 独立文件 |
+| `3rdparty/doctest/doctest.h` | **新文件** — 测试框架 |
+| `Doc/unit-test.md` | **新文件** — 测试方案文档 |
+| `Src/CLI/CLI.cpp` | **修改** — 移除 main() |
+| `Src/Parser/ParserFrontend.h` | **修改** — current_composite_ → 索引 |
+| `Src/Parser/ParserFrontend.cpp` | **修复** — heap-use-after-free |
+| `Doc/architecture.md` | **修改** — 新增 3.9 测试系统章节 |
+| `Doc/prd.md` | **修改** — 新增 IR_8 测试需求 |
+| `CMakeLists.txt` | **修改** — BUILD_TESTING + Sanitizer |
+| `build.sh` | **修改** — 集成 ctest + test_project |

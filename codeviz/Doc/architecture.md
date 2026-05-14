@@ -201,7 +201,9 @@ graph TD
     
     ROOT --> D1["📁 Doc/<br>Design_Spec.md"]
     
-    ROOT --> S1["📁 Src/<br>CMakeLists.txt<br>CLI.h/.cpp<br>CMakeParser.h/.cpp<br>CompDBParser.h/.cpp<br>ParserFrontend.h/.cpp<br>Indexer.h/.cpp<br>GraphBuilder.h/.cpp<br>Analyzer.h/.cpp<br>Reporter.h/.cpp"]
+    ROOT --> S1["📁 Src/<br>CMakeLists.txt<br>main.cpp<br>CLI.h/.cpp<br>CMakeParser.h/.cpp<br>CompDBParser.h/.cpp<br>ParserFrontend.h/.cpp<br>Indexer.h/.cpp<br>GraphBuilder.h/.cpp<br>Analyzer.h/.cpp<br>Reporter.h/.cpp"]
+    
+    ROOT --> TST["📁 Test/<br>CMakeLists.txt<br>test_main.cpp<br>test_cli.cpp<br>test_analyzer.cpp<br>test_graph_builder.cpp<br>test_indexer.cpp<br>test_reporter.cpp<br>test_parser.cpp<br>test_cmake_parser.cpp<br>test_compdb_parser.cpp"]
     
     ROOT --> T1["📁 3rdparty/<br>tree-sitter<br>CLI11<br>spdlog<br>nlohmann<br>Inja"]
     
@@ -226,7 +228,20 @@ graph TD
 | Src/Analyzer/ | 统计分析引擎 |
 | Src/Reporter/ | JSON 序列化 + Inja 模板渲染 |
 | Src/Template/ | 前端模板及 JS 桥接参考文件（实际使用 Reporter.cpp 内嵌的 C++ string literal）|
+| Src/main.cpp | 程序入口（main()），调用 CLI 模块函数 |
+| Test/ | 单元测试目录，基于 doctest 框架 |
+| Test/CMakeLists.txt | 测试构建配置，链接 codeviz_objlib |
+| Test/test_main.cpp | doctest 入口，初始化日志后启动测试运行器 |
+| Test/test_cli.cpp | CLI 模块辅助函数测试（17 用例） |
+| Test/test_analyzer.cpp | Analyzer 模块测试（5 用例） |
+| Test/test_graph_builder.cpp | GraphBuilder 模块测试（6 用例） |
+| Test/test_indexer.cpp | Indexer 模块测试（5 用例） |
+| Test/test_reporter.cpp | Reporter 模块测试（5 用例） |
+| Test/test_parser.cpp | ParserFrontend 模块测试（7 用例） |
+| Test/test_cmake_parser.cpp | CMakeParser 模块测试（9 用例） |
+| Test/test_compdb_parser.cpp | CompDBParser 模块测试（4 用例） |
 | 3rdparty/ | 第三方库，header-only 或源码，通过 CMake add_subdirectory 引入 |
+| 3rdparty/doctest/ | 单头文件测试框架（doctest.h），从 nlohmann/json 测试目录提取 |
 | deploy.sh | 运行环境检测脚本，检查可选运行时依赖（python3/git/firefox等）|
 | build/ | 构建产物，.gitignore 中忽略 |
 
@@ -254,3 +269,93 @@ graph TD
 | 名称 | 功能 | 输入 | 输出 |
 | :--- | :--- | :--- | :--- |
 | **浏览器渲染引擎** | 在用户浏览器中加载生成的 HTML 报告，解析内嵌的 JSON 数据，使用 Cytoscape.js 绘制交互式图形，响应缩放、拖拽、节点点击、侧边栏折叠等用户操作 | 内嵌在 HTML 中的 JSON 分析数据 + 用户交互事件 | 屏幕上的可交互图形界面 |
+
+### 3.9 测试系统
+
+#### 3.9.1 测试策略
+
+采用三层测试体系保障工具质量：
+
+| 层级 | 名称 | 定位 | 工具 |
+|------|------|------|------|
+| 单元测试 | 各模块独立测试，验证输入/输出正确性 | 快速反馈，覆盖正常路径和异常边界 | doctest |
+| 集成测试 | test_project 端到端分析 | 验证全流程可运行 | codeviz + test_project |
+| 一致性检查 | 检查 HTML 报告与源码是否一致 | 防止报告过期 | check_sync.py |
+
+单元测试的核心约束：
+- 测试目标与主目标**共用 OBJECT 库**（`codeviz_objlib`），源码编译一次，避免重复编译
+- `main()` 独立于模块函数，测试目标不包含 `main()` 避免符号冲突
+- 依赖文件系统的测试使用 `mkdtemp` 创建临时目录，测试结束后清理
+
+#### 3.9.2 构建集成流程
+
+```mermaid
+flowchart TB
+    subgraph Build["① 编译链接"]
+        CMake["cmake -B build<br>-DBUILD_TESTING=ON"]
+        ObjLib["编译 codeviz_objlib<br>（OBJECT 库，各模块源码）"]
+        MainExe["链接 codeviz<br>（主可执行文件）"]
+        TestExe["链接 codeviz_test<br>（测试可执行文件）"]
+
+        CMake --> ObjLib
+        ObjLib --> MainExe
+        ObjLib --> TestExe
+    end
+
+    subgraph UnitTest["② 单元测试"]
+        CTest["ctest --output-on-failure"]
+        TestRunner["codeviz_test 执行"]
+        TestCases["58 个测试用例<br>CLI(17) / Analyzer(5) / GraphBuilder(6)<br>Indexer(5) / Reporter(5) / Parser(7)<br>CMakeParser(9) / CompDBParser(4)"]
+
+        CTest --> TestRunner --> TestCases
+    end
+
+    subgraph Integration["③ 集成测试"]
+        CodevizRun["codeviz -p test_project<br>-o /tmp/codeviz_test_report.html"]
+        FullPipeline["全流程分析<br>解析 → 索引 → 建图 → 分析 → 报告"]
+        HTMLOut["生成 HTML 报告"]
+
+        CodevizRun --> FullPipeline --> HTMLOut
+    end
+
+    subgraph Check["④ 一致性检查（可选）"]
+        SyncTool["python3 extra-tool/check_sync.py<br>test_project --html /tmp/..."]
+        Verify["验证报告中的符号、<br>函数覆盖率、时间戳"]
+
+        SyncTool --> Verify
+    end
+
+    Build --> UnitTest --> Integration
+    Integration -.-> Check
+
+    UnitTest -->|失败| Fail["❌ 输出失败详情"]
+    Integration -->|失败| IntegFail["❌ 输出错误日志"]
+    Integration -->|成功| Success["✅ 全部完成"]
+    Check -->|不一致| Warn["⚠️ 输出警告"]
+```
+
+#### 3.9.3 测试目录结构
+
+```
+Test/
+  CMakeLists.txt         # 测试构建配置（链接 codeviz_objlib）
+  test_main.cpp          # doctest 入口
+  test_cli.cpp           # CLI 模块测试
+  test_analyzer.cpp      # Analyzer 模块测试
+  test_graph_builder.cpp # GraphBuilder 模块测试
+  test_indexer.cpp       # Indexer 模块测试
+  test_reporter.cpp      # Reporter 模块测试
+  test_parser.cpp        # ParserFrontend 模块测试
+  test_cmake_parser.cpp  # CMakeParser 模块测试
+  test_compdb_parser.cpp # CompDBParser 模块测试
+```
+
+#### 3.9.4 测试元数据
+
+| 指标 | 数值 |
+|------|------|
+| 测试框架 | doctest 2.4.12（单头文件）|
+| 模块覆盖率 | 8/8 模块（100%）|
+| 测试用例总数 | 58 |
+| 断言总数 | 136 |
+| 构建集成 | build.sh → ctest --output-on-failure |
