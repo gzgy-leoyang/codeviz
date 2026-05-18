@@ -5,6 +5,7 @@
 [![CMake](https://img.shields.io/badge/CMake-3.16%2B-orange.svg)](https://cmake.org/)
 
 codeviz 是一个面向终端用户的 C/C++ 源码静态分析与可视化工具。基于 tree-sitter 语法解析引擎，能够深入分析项目源码，生成交互式 HTML 分析报告，帮助开发者快速理解代码结构和依赖关系。
+![演示 test_project](./image1.jpg)
 
 ## 功能特性
 
