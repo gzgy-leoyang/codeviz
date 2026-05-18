@@ -1,6 +1,11 @@
-// CLI/CLI.cpp - CLI 入口模块实现
-// 解析参数、扫描源文件、调度各模块完成完整分析流程，写入 HTML 报告
-// 对应设计文档 4.3.1 节
+/**
+ * @file CLI.cpp
+ * @brief CLI 入口模块实现
+ *
+ * 解析命令行参数、校验输入、扫描源文件、调度各模块完成分析流程。
+ * 通过 POSIX low-level I/O 保证只读访问（不修改文件时间戳）。
+ * 对应设计文档 4.3.1 节。
+ */
 
 #include "CLI/CLI.h"
 #include "CMakeParser/CMakeParser.h"
@@ -30,6 +35,14 @@ namespace fs = std::filesystem;
 // 辅助函数实现
 // ============================================================================
 
+/**
+ * @brief 初始化 spdlog 日志器
+ *
+ * 创建彩色终端日志器，根据 verbose 标志设置日志级别。
+ * 如果指定了详细日志，启用 debug 级别；否则使用 info 级别。
+ *
+ * @param verbose 是否启用详细日志输出
+ */
 void init_logger(bool verbose) {
     auto console = spdlog::stdout_color_mt("codeviz");
     spdlog::set_default_logger(console);
@@ -37,6 +50,21 @@ void init_logger(bool verbose) {
     spdlog::set_pattern("[%H:%M:%S %^%l%$] %v");
 }
 
+/**
+ * @brief 解析命令行参数
+ *
+ * 使用 CLI11 库定义参数接口。
+ * 支持参数：
+ *   -p, --project  待分析项目的根目录路径（必需）
+ *   -e, --entry    调用图展开的入口函数名（默认 main）
+ *   -d, --depth    调用图递归展开深度（默认 2，范围 1~20）
+ *   -o, --output   输出的 HTML 报告文件路径（默认 <project_path>.html）
+ *   -v, --verbose  启用详细日志输出
+ *
+ * @param argc 命令行参数个数
+ * @param argv 命令行参数数组
+ * @return 解析后的 CommandLineArgs 结构体
+ */
 CommandLineArgs parse_arguments(int argc, char* argv[]) {
     CommandLineArgs args;
 
@@ -79,6 +107,16 @@ codeviz - C/C++ 源码可视化分析工具
     return args;
 }
 
+/**
+ * @brief 校验命令行参数的合法性
+ *
+ * 验证内容：
+ *   - 项目路径存在且为目录
+ *   - 展开深度在 1~20 的合法范围内
+ *
+ * @param args 待校验的 CommandLineArgs
+ * @throw std::invalid_argument 任一校验不通过时抛出
+ */
 void validate_arguments(const CommandLineArgs& args) {
     if (!fs::exists(args.project_path)) {
         throw std::invalid_argument("项目路径不存在: " + args.project_path);
@@ -94,6 +132,16 @@ void validate_arguments(const CommandLineArgs& args) {
                  args.project_path, args.entry_function, args.expand_depth);
 }
 
+/**
+ * @brief 递归扫描目录收集所有 C/C++ 源文件
+ *
+ * 扫描 root 目录下所有子目录，收集扩展名为 .c/.cpp/.cxx/.cc/.h/.hpp/.hxx/.hh 的文件。
+ * 跳过构建目录（/build/、/Build/、/cmake-build-/、/_deps/、/CMakeFiles/）
+ * 和权限受限的目录。
+ *
+ * @param root 扫描起始的根目录
+ * @return 找到的源文件绝对路径列表
+ */
 std::vector<std::string> scan_source_files(const std::string& root) {
     spdlog::info("扫描源文件: {}", root);
 
@@ -119,7 +167,6 @@ std::vector<std::string> scan_source_files(const std::string& root) {
             if (skip) continue;
 
             std::string ext = entry.path().extension().string();
-            // 转小写
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
             for (const auto& valid_ext : EXTENSIONS) {
                 if (ext == valid_ext) {
@@ -136,6 +183,13 @@ std::vector<std::string> scan_source_files(const std::string& root) {
     return files;
 }
 
+/**
+ * @brief 确保输出目录存在
+ *
+ * 检查输出路径的父目录是否存在，若不存在则递归创建。
+ *
+ * @param path 输出文件路径
+ */
 void ensure_output_dir(const std::string& path) {
     fs::path p(path);
     if (p.has_parent_path() && !p.parent_path().empty()) {
@@ -143,8 +197,18 @@ void ensure_output_dir(const std::string& path) {
     }
 }
 
+/**
+ * @brief 以只读方式读取文件的全部内容
+ *
+ * 严格遵守需求 IR_3：使用 POSIX open(O_RDONLY) 以只读方式打开文件，
+ * 不修改文件时间戳（不使用 std::ifstream 以避免 atime 变更问题）。
+ * 通过 fstat 获取文件大小后一次性读取全部内容。
+ *
+ * @param path 要读取的文件路径
+ * @return 文件内容字符串
+ * @throw std::runtime_error 无法打开文件（EACCES, ENOENT 等）或读取失败时抛出
+ */
 std::string read_file_readonly(const std::string& path) {
-    // 严格遵守需求 IR_3：以只读方式打开文件，不修改时间戳
     int fd = open(path.c_str(), O_RDONLY);
     if (fd == -1) {
         throw std::runtime_error("无法以只读方式打开文件: " + path);

@@ -1,6 +1,10 @@
-// Indexer/Indexer.cpp - 符号索引模块实现
-// 两遍遍历 FileParseResult：第一遍建表，第二遍解析引用关系
-// 对应设计文档 4.3.5 节
+/**
+ * @file Indexer.cpp
+ * @brief 符号索引模块实现
+ *
+ * 两遍遍历 FileParseResult：第一遍建表，第二遍解析引用关系。
+ * 对应设计文档 4.3.5 节。
+ */
 
 #include "Indexer/Indexer.h"
 #include <spdlog/spdlog.h>
@@ -8,6 +12,18 @@
 #include <limits>
 #include <cstring>
 
+/**
+ * @brief 构建全局符号索引
+ *
+ * 两遍遍历策略：
+ * - 第一遍：为每个文件和符号分配全局唯一 ID，创建 Symbol、
+ *   FunctionSymbol、CompositeSymbol 和 FileSymbol
+ * - 第二遍：解析调用关系（process_calls）、包含关系（process_includes）、
+ *   基类继承关系（resolve_composite_base_classes）、反向引用（fill_reverse_references）
+ *
+ * @param parse_results 所有文件的解析结果列表
+ * @return 完整的 AnalysisContext
+ */
 AnalysisContext Indexer::build_index(const std::vector<FileParseResult>& parse_results) {
     spdlog::info("开始构建符号索引，共 {} 个文件", parse_results.size());
 
@@ -74,6 +90,15 @@ AnalysisContext Indexer::build_index(const std::vector<FileParseResult>& parse_r
     return ctx;
 }
 
+/**
+ * @brief 导出符号元数据
+ *
+ * 遍历 globals 符号表，为每个符号提取名称、文件、行号、类型，
+ * 并从 functions 池中查找统计信息（圈复杂度、扇入、扇出）。
+ *
+ * @param ctx 分析上下文
+ * @return 符号元数据列表
+ */
 std::vector<SymbolMetadata> Indexer::export_metadata(const AnalysisContext& ctx) {
     spdlog::info("导出符号元数据，共 {} 个符号", ctx.symbols.size());
 
@@ -107,6 +132,13 @@ std::vector<SymbolMetadata> Indexer::export_metadata(const AnalysisContext& ctx)
     return result;
 }
 
+/**
+ * @brief 初始化分析上下文
+ *
+ * 清空所有容器，重置内部状态（自增 ID、待解析基类列表）。
+ *
+ * @param ctx 待初始化的分析上下文
+ */
 void Indexer::init_context(AnalysisContext& ctx) {
     ctx.symbols.clear();
     ctx.symbol_name_to_id.clear();
@@ -122,8 +154,18 @@ void Indexer::init_context(AnalysisContext& ctx) {
     next_id_ = 1;
 }
 
+/**
+ * @brief 获取或创建符号 ID
+ *
+ * 生成 key 为 "文件路径::名称@行号"，确保唯一性。
+ * 若 key 已存在，返回已有 ID；否则分配新 ID。
+ * 同时建立短名称 → ID 的映射（可能存在覆盖）。
+ *
+ * @param raw 原始符号
+ * @param ctx 分析上下文
+ * @return 全局唯一 Symbol ID
+ */
 uint32_t Indexer::get_or_create_symbol_id(const RawSymbol& raw, AnalysisContext& ctx) {
-    // 使用完全限定名（文件路径 + 名称 + 行号）作为唯一 key
     std::string key = raw.file_path + "::" + raw.name + "@" + std::to_string(raw.line_start);
 
     auto it = ctx.symbol_name_to_id.find(key);
@@ -134,7 +176,7 @@ uint32_t Indexer::get_or_create_symbol_id(const RawSymbol& raw, AnalysisContext&
     uint32_t new_id = next_id_++;
     ctx.symbol_name_to_id[key] = new_id;
 
-    // 也建立短名到 ID 的映射（可能会覆盖）
+    // 也建立短名到 ID 的映射（同名符号可能会覆盖）
     if (ctx.symbol_name_to_id.find(raw.name) == ctx.symbol_name_to_id.end()) {
         ctx.symbol_name_to_id[raw.name] = new_id;
     }
@@ -142,6 +184,13 @@ uint32_t Indexer::get_or_create_symbol_id(const RawSymbol& raw, AnalysisContext&
     return new_id;
 }
 
+/**
+ * @brief 将原始符号转换为核心符号
+ *
+ * @param raw 原始符号
+ * @param id 分配的全局 ID
+ * @return 转换后的 Symbol 结构
+ */
 Symbol Indexer::convert_to_symbol(const RawSymbol& raw, uint32_t id) {
     Symbol sym;
     sym.id = id;
@@ -152,7 +201,7 @@ Symbol Indexer::convert_to_symbol(const RawSymbol& raw, uint32_t id) {
     sym.line_end = raw.line_end;
     sym.access = raw.access;
 
-    // 转换 kind
+    // 转换 kind 枚举
     switch (raw.kind) {
         case RawSymbol::FUNC:       sym.kind = SymbolKind::FUNCTION;    break;
         case RawSymbol::STRUCT:     sym.kind = SymbolKind::STRUCT;      break;
@@ -166,6 +215,13 @@ Symbol Indexer::convert_to_symbol(const RawSymbol& raw, uint32_t id) {
     return sym;
 }
 
+/**
+ * @brief 提取函数特有信息
+ *
+ * @param raw 原始符号
+ * @param symbol_id 符号 ID
+ * @return 函数符号（圈复杂度由 Analyzer 后续填充）
+ */
 FunctionSymbol Indexer::extract_function_detail(const RawSymbol& raw, uint32_t symbol_id) {
     FunctionSymbol fsym;
     fsym.symbol_id = symbol_id;
@@ -180,6 +236,15 @@ FunctionSymbol Indexer::extract_function_detail(const RawSymbol& raw, uint32_t s
     return fsym;
 }
 
+/**
+ * @brief 提取复合类型特有信息
+ *
+ * 基类名称暂存储存，留待 resolve_composite_base_classes 第二遍解析为 ID。
+ *
+ * @param raw 原始符号
+ * @param symbol_id 符号 ID
+ * @return 复合类型符号
+ */
 CompositeSymbol Indexer::extract_composite_detail(const RawSymbol& raw, uint32_t symbol_id) {
     CompositeSymbol csym;
     csym.symbol_id = symbol_id;
@@ -190,6 +255,16 @@ CompositeSymbol Indexer::extract_composite_detail(const RawSymbol& raw, uint32_t
     return csym;
 }
 
+/**
+ * @brief 创建文件符号
+ *
+ * 为每个源文件创建 FILE_ENTITY 类型的 Symbol，
+ * 分配 ID 并同时向 symbol 表和 files 列表注册。
+ *
+ * @param file_path 源文件路径
+ * @param ctx 分析上下文
+ * @return 创建的文件符号
+ */
 FileSymbol Indexer::create_file_symbol(const std::string& file_path, AnalysisContext& ctx) {
     FileSymbol fsym;
 
@@ -211,6 +286,18 @@ FileSymbol Indexer::create_file_symbol(const std::string& file_path, AnalysisCon
     return fsym;
 }
 
+/**
+ * @brief 解析函数调用关系
+ *
+ * 遍历每个函数的 callee_names 列表：
+ * - 能在符号表中匹配到 → 创建 CallEdge 和 SymbolRef
+ * - 未找到（外部符号）→ 使用 uint32_t::max() 标记，
+ *   按命名空间前缀推测所属库名并记录到 external_refs
+ * 同时回填 FunctionSymbol::callees 列表。
+ *
+ * @param results 文件解析结果列表
+ * @param ctx 分析上下文（输出：call_edges, references, external_refs, functions[].callees）
+ */
 void Indexer::process_calls(const std::vector<FileParseResult>& results, AnalysisContext& ctx) {
     spdlog::debug("处理函数调用关系");
 
@@ -239,7 +326,6 @@ void Indexer::process_calls(const std::vector<FileParseResult>& results, Analysi
                     ExternalRef ext;
                     ext.caller_name = raw.name;
                     ext.callee_name = callee_name;
-                    // 根据前缀推测库名
                     if (callee_name.rfind("std::", 0) == 0) ext.library = "libstdc++";
                     else if (callee_name.rfind("boost::", 0) == 0) ext.library = "libboost";
                     else if (callee_name.rfind("pthread_", 0) == 0) ext.library = "libpthread";
@@ -259,7 +345,7 @@ void Indexer::process_calls(const std::vector<FileParseResult>& results, Analysi
                 edge.file_path = file_result.file_path;
                 ctx.call_edges.push_back(edge);
 
-                // 创建 SymbolRef
+                // 创建 SymbolRef（仅对内部符号）
                 if (callee_id != std::numeric_limits<uint32_t>::max()) {
                     SymbolRef ref;
                     ref.from_symbol_id = caller_id;
@@ -284,6 +370,17 @@ void Indexer::process_calls(const std::vector<FileParseResult>& results, Analysi
     spdlog::debug("调用关系处理完成: {} 条调用边", ctx.call_edges.size());
 }
 
+/**
+ * @brief 解析头文件包含关系
+ *
+ * 遍历每个文件的 includes 列表：
+ * - 跳过系统头文件（以 < > 包围、无路径分隔符且非 .h/.hpp 扩展名）
+ * - 调用 resolve_include_file 模糊匹配项目内文件路径
+ * - 回填 FileSymbol::includes
+ *
+ * @param results 文件解析结果列表
+ * @param ctx 分析上下文（输出：include_edges, files[].includes）
+ */
 void Indexer::process_includes(const std::vector<FileParseResult>& results, AnalysisContext& ctx) {
     spdlog::debug("处理头文件包含关系");
 
@@ -291,7 +388,7 @@ void Indexer::process_includes(const std::vector<FileParseResult>& results, Anal
     std::vector<std::string> all_file_paths;
     for (const auto& [key, id] : ctx.symbol_name_to_id) {
         if (key.rfind("FILE::", 0) == 0) {
-            all_file_paths.push_back(key.substr(6)); // strip "FILE::"
+            all_file_paths.push_back(key.substr(6)); // 去掉 "FILE::" 前缀
         }
     }
 
@@ -308,7 +405,6 @@ void Indexer::process_includes(const std::vector<FileParseResult>& results, Anal
             if (includee_path.find('/') == std::string::npos &&
                 (includee_path.find(".h") == std::string::npos &&
                  includee_path.find(".hpp") == std::string::npos)) {
-                // 无路径分隔符且无头文件扩展名 → 系统头文件
                 continue;
             }
 
@@ -340,6 +436,19 @@ void Indexer::process_includes(const std::vector<FileParseResult>& results, Anal
     spdlog::debug("包含关系处理完成: {} 条包含边", ctx.include_edges.size());
 }
 
+/**
+ * @brief 解析包含文件路径
+ *
+ * 采用两层匹配策略：
+ * 1. 精确匹配：构造 "FILE::" + includee_path 键值
+ * 2. 后缀匹配：将 includee_path 与所有已知文件路径的后缀比较
+ *
+ * @param includee_path 被包含的文件路径
+ * @param includer_file 包含者的文件路径
+ * @param all_file_paths 所有已知文件路径列表
+ * @param ctx 分析上下文
+ * @return 匹配到的 FileSymbol ID，未找到返回 0
+ */
 uint32_t Indexer::resolve_include_file(const std::string& includee_path,
                                         const std::string& includer_file,
                                         const std::vector<std::string>& all_file_paths,
@@ -362,6 +471,19 @@ uint32_t Indexer::resolve_include_file(const std::string& includee_path,
     return 0; // 未找到
 }
 
+/**
+ * @brief 解析复合类型的基类名称
+ *
+ * 遍历所有暂存的 unresolved_base_classes_，将基类名称字符串
+ * 解析为 Symbol ID。支持多种匹配方式：
+ * - 完全限定名匹配
+ * - 短名称匹配
+ * - 去除 "class " / "struct " / "enum " 前缀后匹配
+ *
+ * 对每个匹配到的基类创建 INHERITS 类型的 TypeDependencyEdge。
+ *
+ * @param ctx 分析上下文（输出：type_edges, composites[].base_classes）
+ */
 void Indexer::resolve_composite_base_classes(AnalysisContext& ctx) {
     spdlog::debug("解析复合类型基类名称");
 
@@ -370,7 +492,7 @@ void Indexer::resolve_composite_base_classes(AnalysisContext& ctx) {
     for (const auto& sym : ctx.symbols) {
         name_to_id[sym.name] = sym.id;
         name_to_id[sym.qualified_name] = sym.id;
-        // 提取最后一段名称
+        // 提取最后一段名称（处理 "namespace::ClassName" 情况）
         size_t pos = sym.name.rfind("::");
         if (pos != std::string::npos) {
             name_to_id[sym.name.substr(pos + 2)] = sym.id;
@@ -385,7 +507,7 @@ void Indexer::resolve_composite_base_classes(AnalysisContext& ctx) {
             // 尝试多种匹配方式
             auto match_it = name_to_id.find(base_name);
             if (match_it == name_to_id.end()) {
-                // 尝试去掉前缀（如 class Foo 的 "Foo"）
+                // 尝试去掉 "class " / "struct " / "enum " 前缀
                 std::string cleaned = base_name;
                 for (const auto& prefix : {"class ", "struct ", "enum "}) {
                     if (cleaned.rfind(prefix, 0) == 0) {
@@ -413,11 +535,18 @@ void Indexer::resolve_composite_base_classes(AnalysisContext& ctx) {
     spdlog::debug("复合类型基类解析完成: {} 条类型依赖边", ctx.type_edges.size());
 }
 
+/**
+ * @brief 填充反向引用列表
+ *
+ * 遍历所有 SymbolRef，将被引用者（to_symbol_id）的 references 列表
+ * 追加引用者 ID（from_symbol_id）。
+ *
+ * @param ctx 分析上下文（输出：symbols[].references）
+ */
 void Indexer::fill_reverse_references(AnalysisContext& ctx) {
     spdlog::debug("填充反向引用关系");
 
     for (const auto& ref : ctx.references) {
-        // 找到被引用的符号，将引用者的 SymbolRef 索引添加进去
         auto it = std::find_if(ctx.symbols.begin(), ctx.symbols.end(),
                                [&ref](const Symbol& s) {
                                    return s.id == ref.to_symbol_id;

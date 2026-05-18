@@ -1,5 +1,10 @@
-// main.cpp - 程序入口
-// 调度各模块完成完整分析流程，写入 HTML 报告
+/**
+ * @file main.cpp
+ * @brief 程序入口，编排完整的源码分析流水线
+ *
+ * 调度各模块完成：参数解析 → 源文件扫描 → CMake/CompDB 解析 →
+ * CST 解析 → 符号索引 → 图构建 → 统计分析 → HTML 报告生成。
+ */
 
 #include "CLI/CLI.h"
 #include "CMakeParser/CMakeParser.h"
@@ -19,6 +24,25 @@
 
 namespace fs = std::filesystem;
 
+/**
+ * @brief 程序入口函数
+ *
+ * 执行完整的源码分析流水线：
+ * 1. 初始化日志系统
+ * 2. 解析并校验命令行参数（-p/-e/-d/-o/-v）
+ * 3. 扫描项目目录下的 C/C++ 源文件
+ * 4. 解析 CMakeLists.txt（含递归子目录）获取构建元数据
+ * 5. 解析 compile_commands.json 获取每个文件的编译参数
+ * 6. 使用 tree-sitter 对每个源文件进行 CST 解析
+ * 7. 构建全局符号索引
+ * 8. BFS 剪枝构建调用图、包含图、类型依赖图
+ * 9. 执行统计分析（圈复杂度、循环包含检测、热力图）
+ * 10. 生成带交互式可视化（Cytoscape.js）的 HTML 报告
+ *
+ * @param argc 命令行参数个数
+ * @param argv 命令行参数数组
+ * @return int 0 表示成功，非 0 表示失败
+ */
 int main(int argc, char* argv[]) {
     // 1. 初始化日志（先用默认级别）
     init_logger(false);

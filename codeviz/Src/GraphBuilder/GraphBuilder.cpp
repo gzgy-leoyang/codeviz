@@ -1,6 +1,11 @@
-// GraphBuilder/GraphBuilder.cpp - 图构建模块实现
-// 基于 AnalysisContext 构建调用图/包含图/类型依赖图，计算扇入扇出
-// 对应设计文档 4.3.6 节
+/**
+ * @file GraphBuilder.cpp
+ * @brief 图构建模块实现
+ *
+ * 基于 AnalysisContext 构建三种图结构：调用图（含 BFS 剪枝）、
+ * 包含图和类型依赖图，同时计算扇入扇出指标。
+ * 对应设计文档 4.3.6 节。
+ */
 
 #include "GraphBuilder/GraphBuilder.h"
 #include <spdlog/spdlog.h>
@@ -10,6 +15,17 @@
 #include <algorithm>
 #include <limits>
 
+/**
+ * @brief 构建三种图结构
+ *
+ * 编排图构建的全过程，注意顺序依赖：
+ * 扇入/扇出计算必须在 BFS 替换 call_edges 之前完成，
+ * 因为 BFS 会丢弃完整调用信息。
+ *
+ * @param ctx 分析上下文（包含已填充的符号表和边数据）
+ * @param entry_function 入口函数名
+ * @param depth BFS 展开深度
+ */
 void GraphBuilder::build(AnalysisContext& ctx, const std::string& entry_function, int depth) {
     spdlog::info("构建图数据: 入口函数={}, 展开深度={}", entry_function, depth);
 
@@ -37,6 +53,15 @@ void GraphBuilder::build(AnalysisContext& ctx, const std::string& entry_function
                  ctx.call_edges.size(), ctx.include_edges.size(), ctx.type_edges.size());
 }
 
+/**
+ * @brief 导出图数据
+ *
+ * 将 AnalysisContext 中的符号和边数据转换为通用的
+ * GraphData 结构（含节点和边的集合）。
+ *
+ * @param ctx 分析上下文
+ * @return 结构化的图数据
+ */
 GraphData GraphBuilder::export_graph_data(const AnalysisContext& ctx) {
     spdlog::info("导出图数据");
 
@@ -95,6 +120,16 @@ GraphData GraphBuilder::export_graph_data(const AnalysisContext& ctx) {
     return gdata;
 }
 
+/**
+ * @brief 定位入口函数
+ *
+ * 先在 symbol_name_to_id 按完全限定名匹配，
+ * 若未找到则遍历符号表按短名称匹配第一个 FUNCTION 类型符号。
+ *
+ * @param ctx 分析上下文
+ * @param entry_name 入口函数名
+ * @return 入口函数的 Symbol ID，未找到返回 0
+ */
 uint32_t GraphBuilder::find_entry_id(const AnalysisContext& ctx, const std::string& entry_name) {
     if (entry_name.empty()) return 0;
 
@@ -115,6 +150,21 @@ uint32_t GraphBuilder::find_entry_id(const AnalysisContext& ctx, const std::stri
     return 0;
 }
 
+/**
+ * @brief 构建 BFS 调用子图
+ *
+ * 关键步骤：
+ * 1. 保存完整调用边到 full_call_edges（供前端按需展开）
+ * 2. BFS 遍历从入口函数出发的调用关系
+ * 3. 用 BFS 子图替换 ctx.call_edges
+ *
+ * 注意：扇入扇出已在调用此方法前完成计算（基于完整边数据），
+ * 因此替换边缘数据不影响准确性。
+ *
+ * @param ctx 分析上下文
+ * @param entry_id 入口函数 ID
+ * @param max_depth BFS 最大深度
+ */
 void GraphBuilder::build_call_graph(AnalysisContext& ctx, uint32_t entry_id, int max_depth) {
     spdlog::debug("构建调用图: 入口ID={}, 最大深度={}", entry_id, max_depth);
 
@@ -129,14 +179,25 @@ void GraphBuilder::build_call_graph(AnalysisContext& ctx, uint32_t entry_id, int
     std::vector<CallEdge> bfs_edges;
     bfs_traverse(entry_id, max_depth, ctx, bfs_edges);
 
-    // 替换 ctx.call_edges 为 BFS 子图（扇入扇出已在替换前完成计算）
+    // 替换 ctx.call_edges 为 BFS 子图
     ctx.call_edges = std::move(bfs_edges);
     spdlog::debug("BFS 完成，子图 {} 条调用边（深度={}）", ctx.call_edges.size(), max_depth);
 }
 
+/**
+ * @brief BFS 遍历调用关系
+ *
+ * 使用队列实现广度优先遍历。构建 callee_map 作为
+ * (caller_id → [callee_ids]) 快速索引，避免重复遍历全量边。
+ * 已访问集合防止重复展开。
+ *
+ * @param start_id 起始函数 Symbol ID
+ * @param max_depth 最大深度
+ * @param ctx 分析上下文
+ * @param edges [out] 收集到的 BFS 子图调用边
+ */
 void GraphBuilder::bfs_traverse(uint32_t start_id, int max_depth, AnalysisContext& ctx,
                                  std::vector<CallEdge>& edges) {
-    // BFS 队列：(symbol_id, 当前深度)
     std::queue<std::pair<uint32_t, int>> bfs_queue;
     std::unordered_set<uint32_t> visited;
 
@@ -176,6 +237,14 @@ void GraphBuilder::bfs_traverse(uint32_t start_id, int max_depth, AnalysisContex
     }
 }
 
+/**
+ * @brief 验证包含图并统计热点头文件
+ *
+ * 验证每条 IncludeEdge 两端 ID 在 FileSymbol 池中有效，
+ * 统计每个头文件被包含的次数，识别热点头文件（被包含最多的）。
+ *
+ * @param ctx 分析上下文
+ */
 void GraphBuilder::build_include_graph(AnalysisContext& ctx) {
     size_t edge_count = ctx.include_edges.size();
     size_t file_count = ctx.files.size();
@@ -214,7 +283,6 @@ void GraphBuilder::build_include_graph(AnalysisContext& ctx) {
         auto max_it = std::max_element(included_by.begin(), included_by.end(),
             [](const auto& a, const auto& b) { return a.second < b.second; });
         if (max_it != included_by.end() && max_it->second > 1) {
-            // 查找对应的文件路径
             for (const auto& fs : ctx.files) {
                 if (fs.symbol_id == max_it->first) {
                     spdlog::debug("热点头文件: {} (被包含 {} 次)",
@@ -226,13 +294,21 @@ void GraphBuilder::build_include_graph(AnalysisContext& ctx) {
     }
 }
 
+/**
+ * @brief 构建类型依赖图
+ *
+ * 遍历所有 CompositeSymbol，分析字段类型引用。
+ * 尝试将字段类型名解析为 Symbol ID，创建 CONTAINS 类型的边。
+ * 已存在的边不会重复添加（通过遍历现有边去重）。
+ *
+ * @param ctx 分析上下文（输出：type_edges）
+ */
 void GraphBuilder::build_type_dependency_graph(AnalysisContext& ctx) {
     spdlog::debug("构建类型依赖图");
 
     for (const auto& csym : ctx.composites) {
         // 处理字段包含关系（字段类型为其他复合类型）
         for (const auto& field : csym.fields) {
-            // 尝试将字段类型名解析为符号 ID
             auto it = ctx.symbol_name_to_id.find(field.type);
             if (it != ctx.symbol_name_to_id.end()) {
                 uint32_t field_type_id = it->second;
@@ -260,10 +336,18 @@ void GraphBuilder::build_type_dependency_graph(AnalysisContext& ctx) {
     spdlog::debug("类型依赖图构建完成: {} 条依赖边", ctx.type_edges.size());
 }
 
+/**
+ * @brief 计算扇入
+ *
+ * 统计每个 callee_id 出现在 call_edges 中的总次数。
+ * 排除外部符号（ID == uint32_t::max()）。
+ * 结果回填到 FunctionSymbol::fan_in。
+ *
+ * @param ctx 分析上下文（输出：functions[].fan_in）
+ */
 void GraphBuilder::compute_fan_in(AnalysisContext& ctx) {
     spdlog::debug("计算扇入");
 
-    // 统计每个函数被调用的次数
     std::unordered_map<uint32_t, int> fan_in_map;
     for (const auto& edge : ctx.call_edges) {
         if (edge.callee_id != std::numeric_limits<uint32_t>::max()) {
@@ -280,10 +364,18 @@ void GraphBuilder::compute_fan_in(AnalysisContext& ctx) {
     }
 }
 
+/**
+ * @brief 计算扇出
+ *
+ * 统计每个 caller_id 调用的不同函数数量（去重）。
+ * 排除外部符号（ID == uint32_t::max()）。
+ * 结果回填到 FunctionSymbol::fan_out。
+ *
+ * @param ctx 分析上下文（输出：functions[].fan_out）
+ */
 void GraphBuilder::compute_fan_out(AnalysisContext& ctx) {
     spdlog::debug("计算扇出");
 
-    // 统计每个函数调用的不同函数数量
     std::unordered_map<uint32_t, std::unordered_set<uint32_t>> fan_out_map;
     for (const auto& edge : ctx.call_edges) {
         if (edge.callee_id != std::numeric_limits<uint32_t>::max()) {

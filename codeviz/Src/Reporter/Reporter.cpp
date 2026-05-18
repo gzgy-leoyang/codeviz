@@ -1,6 +1,12 @@
-// Reporter/Reporter.cpp - HTML 报告生成器实现
-// 将分析数据序列化为 JSON，注入 HTML 模板，生成自包含 HTML 报告
-// 对应设计文档 4.3.8 节
+/**
+ * @file Reporter.cpp
+ * @brief HTML 报告生成器实现
+ *
+ * 将分析数据（符号元数据、图结构、统计）序列化为 JSON，
+ * 注入内嵌 HTML 模板 + Cytoscape.js，使用 Inja 模板引擎
+ * 渲染生成自包含的交互式 HTML 报告。
+ * 对应设计文档 4.3.8 节。
+ */
 
 #include "Reporter/Reporter.h"
 #include <nlohmann/json.hpp>
@@ -180,7 +186,8 @@ static const char* HTML_TEMPLATE = R"HTML(
 </html>
 )HTML";
 
-// 内嵌桥接 JS 脚本（从 Template/cytoscape_bridge.js 内嵌）
+// 内嵌桥接 JS 脚本（实现 Cytoscape.js 的交互初始化、节点懒展开、
+// 双击/悬停事件、侧边栏 Tab 切换、深色/浅色主题切换等功能）
 static const char* BRIDGE_JS = R"BRIDGE(
 (function(){
 'use strict';
@@ -294,6 +301,19 @@ document.addEventListener('DOMContentLoaded',function(){updateMeta();renderSideb
 })();
 )BRIDGE";
 
+/**
+ * @brief 生成完整的 HTML 报告
+ *
+ * 执行流程：加载内嵌 HTML 模板 → 构建 JSON 数据对象 →
+ * 加载 Cytoscape.js 库二进制 → Inja 模板引擎渲染。
+ * 优先使用 ctx.full_call_edges（完整调用边，供前端按需展开）。
+ *
+ * @param symbols 符号元数据列表
+ * @param stats 统计分析结果
+ * @param ctx 分析上下文（含图数据、外部引用、命令行等）
+ * @return HTMLReport 结构（含内容和输出路径）
+ * @throw std::runtime_error HTML 模板为空时抛出
+ */
 HTMLReport Reporter::generate(const std::vector<SymbolMetadata>& symbols,
                                const AnalysisStats& stats,
                                const AnalysisContext& ctx) {
@@ -330,10 +350,35 @@ HTMLReport Reporter::generate(const std::vector<SymbolMetadata>& symbols,
     return report;
 }
 
+/**
+ * @brief 加载内嵌的 HTML 模板字符串
+ *
+ * @return HTML 骨架模板（含 CSS 样式、HTML 结构和 JavaScript 注入点）
+ */
 std::string Reporter::load_template() {
     return std::string(HTML_TEMPLATE);
 }
 
+/**
+ * @brief 构建完整的 JSON 数据对象
+ *
+ * 构造供前端 JavaScript 使用的全量数据，包含：
+ * - metadata: 项目名、文件/函数数、编译器、命令行、入口函数 ID
+ * - symbols: 符号元数据（含函数签名、注释、统计指标）
+ * - composites: 复合类型字段信息
+ * - call_graph: 调用图（优先使用 full_call_edges 而非 BFS 剪枝后的边）
+ * - include_graph: 包含图
+ * - type_graph: 类型依赖图
+ * - hotspots: 文件和函数的归一化热力值
+ * - anomalies: 循环包含等异常检测结果
+ * - external_refs: 外部符号引用
+ * - stats: file_stats + function_stats（前端直接消费）
+ *
+ * @param symbols 符号元数据
+ * @param stats 分析统计
+ * @param ctx 分析上下文
+ * @return 完整的 JSON 对象
+ */
 json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
                            const AnalysisStats& stats,
                            const AnalysisContext& ctx) {
@@ -492,6 +537,16 @@ json Reporter::build_json(const std::vector<SymbolMetadata>& symbols,
     return root;
 }
 
+/**
+ * @brief 将调用边转换为 Cytoscape.js 格式
+ *
+ * 收集所有边数据中出现的节点 ID 生成节点列表。
+ * 边去重：使用 map 合并相同 (caller_id, callee_id) 的 weight。
+ *
+ * @param edges 调用边列表
+ * @param symbols 符号表（用于查找节点名称）
+ * @return 含 "nodes" 和 "edges" 数组的 JSON 对象
+ */
 json Reporter::convert_call_graph(const std::vector<CallEdge>& edges,
                                    const std::vector<Symbol>& symbols) {
         json graph;
@@ -537,6 +592,17 @@ json Reporter::convert_call_graph(const std::vector<CallEdge>& edges,
     return graph;
 }
 
+/**
+ * @brief 将包含边转换为 Cytoscape.js 格式
+ *
+ * 节点标签只显示文件名（去除目录路径），便于阅读。
+ * 边直接映射，权重固定为 1。
+ *
+ * @param edges 包含边列表
+ * @param files 文件符号池（保留参数，当前未直接使用）
+ * @param symbols 符号表
+ * @return 含 "nodes" 和 "edges" 数组的 JSON 对象
+ */
 json Reporter::convert_include_graph(const std::vector<IncludeEdge>& edges,
                                       const std::vector<FileSymbol>& files,
                                       const std::vector<Symbol>& symbols) {
@@ -576,6 +642,17 @@ json Reporter::convert_include_graph(const std::vector<IncludeEdge>& edges,
     return graph;
 }
 
+/**
+ * @brief 将类型依赖边转换为 Cytoscape.js 格式
+ *
+ * 区分 INHERITS 和 CONTAINS 两种关系类型，
+ * 分别映射到前端不同的显示样式。
+ *
+ * @param edges 类型依赖边列表
+ * @param composites 复合类型池（保留参数，当前未直接使用）
+ * @param symbols 符号表
+ * @return 含 "nodes" 和 "edges" 数组的 JSON 对象
+ */
 json Reporter::convert_type_graph(const std::vector<TypeDependencyEdge>& edges,
                                    const std::vector<CompositeSymbol>& composites,
                                    const std::vector<Symbol>& symbols) {
@@ -612,6 +689,15 @@ json Reporter::convert_type_graph(const std::vector<TypeDependencyEdge>& edges,
     return graph;
 }
 
+/**
+ * @brief 构建热力图数据
+ *
+ * 计算文件（按代码行数）和函数（按扇入）的归一化热力值（0~1），
+ * 用于前端按热力值着色，帮助快速定位高频函数和大型文件。
+ *
+ * @param stats 分析统计（含 file_stats 和 function_stats）
+ * @return JSON 对象：{ files: [...], functions: [...] }
+ */
 json Reporter::build_hotspots(const AnalysisStats& stats) {
     json hotspots;
 
@@ -648,6 +734,12 @@ json Reporter::build_hotspots(const AnalysisStats& stats) {
     return hotspots;
 }
 
+/**
+ * @brief 构建异常检测结果数据
+ *
+ * @param stats 分析统计（含 circular_includes）
+ * @return JSON 对象：{ circular_includes: [...] }
+ */
 json Reporter::build_anomalies(const AnalysisStats& stats) {
     json anomalies;
 
@@ -662,6 +754,16 @@ json Reporter::build_anomalies(const AnalysisStats& stats) {
     return anomalies;
 }
 
+/**
+ * @brief 根据 ID 查找符号名称
+ *
+ * 线性遍历符号表匹配 ID。由于调用次数有限（仅序列化阶段），
+ * 未使用哈希索引优化。
+ *
+ * @param id 符号 ID
+ * @param symbols 符号表
+ * @return 符号名称，未找到时返回 "sym_<id>"
+ */
 std::string Reporter::find_symbol_name(uint32_t id, const std::vector<Symbol>& symbols) {
     for (const auto& s : symbols) {
         if (s.id == id) return s.name;
